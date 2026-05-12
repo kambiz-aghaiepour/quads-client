@@ -2,14 +2,17 @@ from typing import Optional
 import sys
 import jwt
 import urllib3
-Conditionally inject truststore only on macOS
+
+# Conditionally inject truststore only on macOS
 if sys.platform == "darwin":
     try:
         import truststore
+
         _has_truststore = True
     except ImportError:
         _has_truststore = False
         import warnings
+
         warnings.warn(
             "The 'truststore' package is missing. macOS system certificates "
             "may not be recognized. Please run `pip install truststore`."
