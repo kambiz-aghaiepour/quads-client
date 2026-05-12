@@ -6,7 +6,9 @@ Conditionally inject truststore only on macOS
 if sys.platform == 'darwin':
     try:
         import truststore
+        _has_truststore = True
     except ImportError:
+        _has_truststore = False
         import warnings
         warnings.warn(
             "The 'truststore' package is missing. macOS system certificates "
@@ -144,7 +146,7 @@ class ConnectionManager:
         username, password = self.config.get_server_credentials(server_name)
         verify = self.config.get_server_verify(server_name)
 
-        if sys.platform == 'darwin':
+        if sys.platform == 'darwin' and _has_truststore:
             truststore.inject_into_ssl()
 
         # Suppress SSL warnings when certificate verification is disabled
