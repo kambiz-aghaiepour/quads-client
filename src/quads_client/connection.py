@@ -2,8 +2,11 @@ from typing import Optional
 import jwt
 import truststore
 import urllib3
+
 from quads_lib import QuadsApi
+
 from quads_client.config import QuadsClientConfig
+
 
 class ConnectionError(Exception):
     pass
