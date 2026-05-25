@@ -1,6 +1,48 @@
 # CHANGELOG
 
 
+## v0.6.0 (2026-05-25)
+
+### Bug Fixes
+
+- Don't call api.login() when using api_token.
+  ([`2cf6807`](https://github.com/quadsproject/quads-client/commit/2cf68078fcf51e20c4c462422c71a07b70751c0d))
+
+Removed api.login() call from the connect() token path. The flow is now: 1.
+  QuadsApi.__init__(api_token=...) sets Bearer header on session 2. api.get_version() verifies
+  server is reachable 3. _detect_role_from_api() calls /users/{email} to get role
+
+- Regressions and login() usage
+  ([`b9ef915`](https://github.com/quadsproject/quads-client/commit/b9ef9152b22ba30eed9ded1a74aa7ff36623813f))
+
+### Chores
+
+- Fix codecov coverage complaints
+  ([`ffa3b86`](https://github.com/quadsproject/quads-client/commit/ffa3b8629f6357693b86b52b9b8c3570eacd81e7))
+
+Assisted-by: claude
+
+- Fix tests
+  ([`5f50d62`](https://github.com/quadsproject/quads-client/commit/5f50d624736bf52d5cb1b1bbabd73b9193aa80f1))
+
+Assisted-by: claude
+
+- Update docs for token mgmt
+  ([`a69ce62`](https://github.com/quadsproject/quads-client/commit/a69ce6262957f5a72af90a5de0efa2d09c0a7a48))
+
+- Update RPM spec version to 0.5.4
+  ([`bb545a5`](https://github.com/quadsproject/quads-client/commit/bb545a5f70ecda0aebf8087ca3aff86ce9fa16ff))
+
+### Features
+
+- Support qat_ SSO tokens for QUADS 3.x
+  ([`19a4732`](https://github.com/quadsproject/quads-client/commit/19a4732ca748d336f03959cbbb5bc9e6e0f2e94d))
+
+* Prioritize permanent SSO Token workflows (preferred) * Still support legacy workflows * Properly
+  support 40x API returns when admins have strict auth settings enabled disallowing legacy / anon
+  register/login workflows.
+
+
 ## v0.5.4 (2026-05-16)
 
 ### Bug Fixes
