@@ -332,7 +332,7 @@ def test_add_quads_server_success(mock_shell):
 
     yaml_content = {"servers": {}}
 
-    with patch("builtins.input", side_effect=["quads3.example.com", "https://quads3.example.com", "y", "n"]):
+    with patch("builtins.input", side_effect=["quads3.example.com", "https://quads3.example.com", "y", "3"]):
         with patch("requests.get") as mock_get:
             mock_get.return_value.status_code = 200
             with patch("builtins.open", mock_open(read_data="servers: {}\n")):
@@ -380,7 +380,7 @@ def test_add_quads_server_no_verify(mock_shell):
 
     yaml_content = {"servers": {}}
 
-    with patch("builtins.input", side_effect=["quads3.example.com", "https://quads3.example.com", "n", "n"]):
+    with patch("builtins.input", side_effect=["quads3.example.com", "https://quads3.example.com", "n", "3"]):
         with patch("requests.get") as mock_get:
             mock_get.return_value.status_code = 200
             with patch("builtins.open", mock_open(read_data="servers: {}\n")):
@@ -396,7 +396,7 @@ def test_add_quads_server_no_verify(mock_shell):
 
 
 def test_add_quads_server_with_credentials(mock_shell):
-    """Test add-quads-server with existing credentials provided"""
+    """Test add-quads-server with username/password credentials"""
     mock_shell.config.config_path = "~/.config/quads/quads-client.yml"
 
     yaml_content = {"servers": {}}
@@ -407,7 +407,7 @@ def test_add_quads_server_with_credentials(mock_shell):
             "quads3.example.com",
             "https://quads3.example.com",
             "y",
-            "y",
+            "1",
             "user@example.com",
         ],
     ):
@@ -615,7 +615,7 @@ def test_add_quads_server_connection_failed_accept(mock_shell):
                 with patch("yaml.dump") as mock_dump:
                     with patch(
                         "builtins.input",
-                        side_effect=["quads3.example.com", "https://quads3.example.com", "y", "n", "y"],
+                        side_effect=["quads3.example.com", "https://quads3.example.com", "y", "3", "y"],
                     ):
                         with patch.object(ServerCommands, "cmd_config_reload"):
                             server_cmd = ServerCommands(mock_shell)
