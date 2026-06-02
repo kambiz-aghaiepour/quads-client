@@ -88,9 +88,7 @@ class MoveProgressView(BaseAdminView):
                     status,
                     move.get("message", "") or "",
                 )
-                self.tree.tree.insert(
-                    "", tk.END, values=values, tags=(tag,) if tag else ()
-                )
+                self.tree.tree.insert("", tk.END, values=values, tags=(tag,) if tag else ())
 
             self.update_status(f"{len(moves)} active move(s)")
 

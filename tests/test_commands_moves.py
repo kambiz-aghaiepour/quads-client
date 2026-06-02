@@ -29,9 +29,7 @@ def test_move_status_not_authenticated(move_commands, mock_shell):
 
     move_commands.cmd_move_status("")
 
-    mock_shell.perror.assert_called_once_with(
-        "Not authenticated. Use 'login' command first."
-    )
+    mock_shell.perror.assert_called_once_with("Not authenticated. Use 'login' command first.")
 
 
 def test_move_status_all_no_moves(move_commands, mock_shell):
@@ -96,15 +94,11 @@ def test_move_status_single_host_not_found(move_commands, mock_shell):
 
     move_commands.cmd_move_status("nonexistent.example.com")
 
-    mock_shell.rich_console.print_info.assert_called_once_with(
-        "No active move for nonexistent.example.com"
-    )
+    mock_shell.rich_console.print_info.assert_called_once_with("No active move for nonexistent.example.com")
 
 
 def test_move_status_api_error(move_commands, mock_shell):
-    mock_shell.connection.api.get_all_move_progress.side_effect = Exception(
-        "Connection refused"
-    )
+    mock_shell.connection.api.get_all_move_progress.side_effect = Exception("Connection refused")
 
     move_commands.cmd_move_status("")
 
