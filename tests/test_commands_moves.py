@@ -1,7 +1,12 @@
 import pytest
 from unittest.mock import MagicMock
 from quads_client.commands.moves import MoveCommands
-from quads_client.progress import ProgressTracker, stage_of, TOTAL_STAGES
+from quads_client.progress import (
+    ProgressTracker,
+    format_progress_str,
+    stage_of,
+    TOTAL_STAGES,
+)
 
 
 @pytest.fixture
@@ -15,7 +20,7 @@ def test_move_status_not_connected(move_commands, mock_shell):
 
     move_commands.cmd_move_status("")
 
-    mock_shell.rich_console.print_error.assert_called_once_with("Not connected")
+    mock_shell.perror.assert_called_once_with("Not connected to any server")
 
 
 def test_move_status_not_authenticated(move_commands, mock_shell):
@@ -24,7 +29,9 @@ def test_move_status_not_authenticated(move_commands, mock_shell):
 
     move_commands.cmd_move_status("")
 
-    mock_shell.rich_console.print_error.assert_called_once_with("Not authenticated")
+    mock_shell.perror.assert_called_once_with(
+        "Not authenticated. Use 'login' command first."
+    )
 
 
 def test_move_status_all_no_moves(move_commands, mock_shell):
@@ -149,7 +156,7 @@ class TestProgressTracker:
 
         result = tracker.format_stage_progress("host1")
 
-        assert result == "1/12 stages (pending)"
+        assert result == "1/12"
 
     def test_format_stage_progress_failed(self):
         api = MagicMock()
@@ -167,7 +174,7 @@ class TestProgressTracker:
 
         result = tracker.format_stage_progress("host1")
 
-        assert result == "12/12 stages (released)"
+        assert result == "12/12"
 
     def test_format_stage_progress_no_data(self):
         api = MagicMock()
@@ -177,6 +184,23 @@ class TestProgressTracker:
         result = tracker.format_stage_progress("host1")
 
         assert result == ""
+
+
+class TestFormatProgressStr:
+    def test_pending(self):
+        assert format_progress_str("pending") == "1/12"
+
+    def test_provisioning(self):
+        assert format_progress_str("provisioning") == "6/12"
+
+    def test_failed(self):
+        assert format_progress_str("failed") == "FAILED @ 12/12"
+
+    def test_completed(self):
+        assert format_progress_str("completed") == "12/12"
+
+    def test_released(self):
+        assert format_progress_str("released") == "12/12"
 
 
 class TestStageOf:

@@ -1,18 +1,17 @@
-from quads_client.progress import TOTAL_STAGES, stage_of
+from quads_client.error_handler import require_auth
+from quads_client.progress import TOTAL_STAGES, format_progress_str, stage_of
 
 
 class MoveCommands:
     def __init__(self, shell):
         self.shell = shell
 
+    def _require_auth(self):
+        return require_auth(self.shell)
+
     def cmd_move_status(self, args):
         """Show move/rebuild progress for active moves or a specific host"""
-        if not self.shell.connection or not self.shell.connection.is_connected:
-            self.shell.rich_console.print_error("Not connected")
-            return
-
-        if not self.shell.connection.is_authenticated:
-            self.shell.rich_console.print_error("Not authenticated")
+        if not self._require_auth():
             return
 
         hostname = args.strip() if args else None
@@ -63,19 +62,12 @@ class MoveCommands:
             rows = []
             for move in active:
                 status = move.get("status", "pending")
-                stage = stage_of(status)
-                if status == "failed":
-                    progress_str = f"FAILED @ {stage}/{TOTAL_STAGES}"
-                elif status == "completed":
-                    progress_str = f"{TOTAL_STAGES}/{TOTAL_STAGES}"
-                else:
-                    progress_str = f"{stage}/{TOTAL_STAGES}"
                 rows.append(
                     [
                         move.get("host", "?"),
                         move.get("source_cloud", ""),
                         move.get("target_cloud", ""),
-                        progress_str,
+                        format_progress_str(status),
                         status,
                         move.get("message", "") or "",
                     ]

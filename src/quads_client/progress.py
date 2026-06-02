@@ -1,6 +1,7 @@
 from typing import Any, Optional
 
 
+# Keep in sync with MOVE_STAGES in quads/server/models.py
 MOVE_STAGES = [
     "pending",
     "switch_config",
@@ -27,6 +28,15 @@ def stage_of(status):
         return 0
 
 
+def format_progress_str(status):
+    stage = stage_of(status)
+    if status == "failed":
+        return f"FAILED @ {stage}/{TOTAL_STAGES}"
+    if status == "completed":
+        return f"{TOTAL_STAGES}/{TOTAL_STAGES}"
+    return f"{stage}/{TOTAL_STAGES}"
+
+
 class ProgressTracker:
     def __init__(self, api):
         self._api = api
@@ -48,9 +58,4 @@ class ProgressTracker:
         if not data:
             return ""
         status = data.get("status", "pending")
-        stage = stage_of(status)
-        if status == "failed":
-            return f"FAILED at stage {stage}/{TOTAL_STAGES} ({status})"
-        if status == "completed":
-            return f"{TOTAL_STAGES}/{TOTAL_STAGES} stages (released)"
-        return f"{stage}/{TOTAL_STAGES} stages ({status})"
+        return format_progress_str(status)
