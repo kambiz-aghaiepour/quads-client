@@ -1,6 +1,40 @@
 # CHANGELOG
 
 
+## v0.8.1 (2026-06-09)
+
+### Bug Fixes
+
+- Add proper awareness for awaiting_move
+  ([`3ab4575`](https://github.com/quadsproject/quads-client/commit/3ab4575db7a84642677545376df9350839c07b47))
+
+This was done in CLI but not everywhere and not done in the GUI.
+
+- Refactor for interim move statuses.
+  ([`187747d`](https://github.com/quadsproject/quads-client/commit/187747d77c5205a5381adfed2d872856ccec0487))
+
+- _show_pending_moves refactored into _get_pending_moves (returns the list instead of printing) -
+  _wait_for_active_all and _wait_for_active_single -- new methods that show a live Rich table of
+  scheduled moves, poll every 10s, and return active move data once the server's move cycle starts
+  (or None on Ctrl+C) - _build_pending_table -- builds the Rich table with caption showing "Last
+  check: HH:MM:SS | Refresh: 10s | Ctrl+C to stop" - Both _track_single and _track_all now: get
+  pending -> wait for active (live polling) -> seamlessly transition into the existing 5s live
+  tracking loop
+
+Assisted-by: claude
+
+### Chores
+
+- Fix test coverage
+  ([`9806cc0`](https://github.com/quadsproject/quads-client/commit/9806cc0704ba761244309c9bf96625c6054bbd2e))
+
+- Update doc descriptions
+  ([`630b423`](https://github.com/quadsproject/quads-client/commit/630b42369959bf4b71d1f2c3dbb4488936b03b3c))
+
+- Update RPM spec version to 0.8.0
+  ([`a3b022f`](https://github.com/quadsproject/quads-client/commit/a3b022f507a467236be39d0103f668f8d83df530))
+
+
 ## v0.8.0 (2026-06-09)
 
 ### Bug Fixes
