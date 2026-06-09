@@ -761,6 +761,8 @@ class UserCommands:
         if not self._require_auth():
             return
 
+        from quads_client.progress import format_progress_str
+
         try:
             username = get_username_short(self.shell.connection.username)
             # Get assignments by owner
@@ -772,12 +774,21 @@ class UserCommands:
             self.shell.poutput(f"\nHosts scheduled by {username}:")
             self.shell.poutput("=" * 80)
 
+            move_status_map = {}
+            try:
+                all_moves = self.shell.connection.api.get_all_move_status()
+                if all_moves:
+                    move_status_map = {m["host"]: m for m in all_moves if isinstance(m, dict)}
+            except Exception:
+                pass
+
             # Collect all unique hosts across all assignments
             unique_hosts = {}
             for assignment in assignments:
                 assignment_id = extract_assignment_id(assignment)
                 cloud_name = extract_cloud_name(assignment)
                 description = assignment.get("description", "")
+                is_validated = assignment.get("validated", False)
 
                 # Get current schedules for this assignment
                 schedules = self.shell.connection.api.get_schedules({"assignment_id": assignment_id})
@@ -787,8 +798,21 @@ class UserCommands:
                         end = schedule.get("end", "N/A").replace("GMT", "UTC")
                         # Use hostname as key to ensure uniqueness
                         if host_name not in unique_hosts:
+                            if is_validated:
+                                status = "Active"
+                                progress = format_progress_str("completed")
+                            else:
+                                status = "Provisioning"
+                                progress = "N/A"
+                                move_data = move_status_map.get(host_name)
+                                if move_data:
+                                    move_st = move_data.get("status", "pending")
+                                    progress = format_progress_str(move_st)
+                                    status = move_st.replace("_", " ").title()
+
                             unique_hosts[host_name] = {
-                                "status": "Active",
+                                "status": status,
+                                "progress": progress,
                                 "end": end,
                                 "assignment_id": assignment_id,
                                 "cloud": cloud_name,
@@ -808,11 +832,12 @@ class UserCommands:
                         info["assignment_id"],
                         info["cloud"],
                         info["status"],
+                        info["progress"],
                         f"Expires: {info['end']}",
                     ]
                 )
 
-            headers = ["Host", "Assignment", "Cloud", "Status", "Schedule"]
+            headers = ["Host", "Assignment", "Cloud", "Status", "Progress", "Schedule"]
             self.shell.poutput(tabulate(table_data, headers=headers, tablefmt="simple"))
             self.shell.poutput(f"\nTotal unique hosts: {len(unique_hosts)}")
 

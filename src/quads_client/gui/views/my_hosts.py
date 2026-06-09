@@ -188,6 +188,7 @@ class MyHostsView(ttk.Frame):
     def _fetch_assignments(self):
         """Fetch assignments from the server via CLI command"""
         from quads_client.utils import get_username_short
+        from quads_client.progress import format_progress_str
 
         assignments_data = []
 
@@ -198,6 +199,14 @@ class MyHostsView(ttk.Frame):
 
             if not user_assignments:
                 return []
+
+            move_status_map = {}
+            try:
+                all_moves = self.shell.connection.api.get_all_move_status()
+                if all_moves:
+                    move_status_map = {m["host"]: m for m in all_moves if isinstance(m, dict)}
+            except Exception as e:
+                self.shell.perror(f"Failed to fetch move status: {e}")
 
             for assignment in user_assignments:
                 if isinstance(assignment, dict):
@@ -226,7 +235,18 @@ class MyHostsView(ttk.Frame):
                                 hostname = hostname.get("name", "")
 
                             status = "active" if is_validated else "provisioning"
-                            hosts.append({"name": str(hostname), "status": status, "progress": "N/A"})
+
+                            if status == "active":
+                                progress = format_progress_str("completed")
+                            else:
+                                progress = "N/A"
+                                move_data = move_status_map.get(str(hostname))
+                                if move_data:
+                                    move_status = move_data.get("status", "pending")
+                                    progress = format_progress_str(move_status)
+                                    status = move_status
+
+                            hosts.append({"name": str(hostname), "status": status, "progress": progress})
 
                     if schedules:
                         first = schedules[0] if isinstance(schedules[0], dict) else {}
@@ -301,24 +321,25 @@ class MyHostsView(ttk.Frame):
         for host in assignment["hosts"]:
             status_icon = self._get_status_icon(host["status"])
             progress_bar = self._get_progress_bar(host["progress"])
+            display_status = host["status"].replace("_", " ").title()
 
             item_id = tree.insert(
                 "",
                 tk.END,
-                values=(host["name"], f"{status_icon} {host['status'].capitalize()}", progress_bar),
+                values=(host["name"], f"{status_icon} {display_status}", progress_bar),
             )
 
             if host["status"] == "active":
                 tree.item(item_id, tags=("active",))
                 tree.tag_configure("active", foreground=self.shell.gui_app.theme_manager.get_color("success"))
-            elif host["status"] == "provisioning":
+            elif host["status"] == "failed":
+                tree.item(item_id, tags=("failed",))
+                tree.tag_configure("failed", foreground=self.shell.gui_app.theme_manager.get_color("error"))
+            else:
                 tree.item(item_id, tags=("provisioning",))
                 tree.tag_configure(
                     "provisioning", foreground=self.shell.gui_app.theme_manager.get_color("provisioning")
                 )
-            elif host["status"] == "failed":
-                tree.item(item_id, tags=("failed",))
-                tree.tag_configure("failed", foreground=self.shell.gui_app.theme_manager.get_color("error"))
 
         tree.pack(fill=tk.BOTH, expand=True)
 
@@ -335,16 +356,27 @@ class MyHostsView(ttk.Frame):
         """Get status icon for host"""
         icons = {
             "active": "✓",
-            "provisioning": "⏳",
-            "queued": "○",
             "failed": "✗",
         }
-        return icons.get(status, "○")
+        return icons.get(status, "⏳")
 
     def _get_progress_bar(self, progress):
         """Get text progress bar"""
         if progress == "N/A":
             return "░" * 10 + " N/A"
+        if isinstance(progress, str):
+            if progress.startswith("FAILED"):
+                return "░" * 10 + " FAILED"
+            if "/" in progress:
+                parts = progress.split("/")
+                try:
+                    current, total = int(parts[0]), int(parts[1])
+                    filled = int((current / total) * 10) if total else 0
+                except (ValueError, IndexError):
+                    filled = 0
+                empty = 10 - filled
+                return "█" * filled + "░" * empty + f" {progress}"
+            return "░" * 10 + f" {progress}"
         filled = int(progress / 10)
         empty = 10 - filled
         return "█" * filled + "░" * empty + f" {progress}%"

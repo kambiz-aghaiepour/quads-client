@@ -68,7 +68,7 @@ def test_move_status_all_with_moves(move_commands, mock_shell):
     assert len(rows) == 2
     assert rows[0][0] == "host1.example.com"
     assert rows[0][3] == "6/12"
-    assert rows[1][3] == "FAILED @ 12/12"
+    assert rows[1][3] == "FAILED"
 
 
 def test_move_status_single_host(move_commands, mock_shell):
@@ -204,13 +204,55 @@ class TestFormatProgressStr:
         assert format_progress_str("provisioning") == "6/12"
 
     def test_failed(self):
-        assert format_progress_str("failed") == "FAILED @ 12/12"
+        assert format_progress_str("failed") == "FAILED"
 
     def test_completed(self):
         assert format_progress_str("completed") == "12/12"
 
     def test_released(self):
         assert format_progress_str("released") == "12/12"
+
+
+class TestGetProgressBar:
+    @staticmethod
+    def _make_view():
+        from quads_client.gui.views.my_hosts import MyHostsView
+
+        return MyHostsView.__new__(MyHostsView)
+
+    def test_na(self):
+        view = self._make_view()
+        result = view._get_progress_bar("N/A")
+        assert "N/A" in result
+        assert "░" in result
+
+    def test_failed(self):
+        view = self._make_view()
+        result = view._get_progress_bar("FAILED")
+        assert "FAILED" in result
+        assert "░" in result
+
+    def test_stage_fraction(self):
+        view = self._make_view()
+        result = view._get_progress_bar("6/12")
+        assert "6/12" in result
+        assert "█" in result
+
+    def test_stage_full(self):
+        view = self._make_view()
+        result = view._get_progress_bar("12/12")
+        assert "12/12" in result
+
+    def test_numeric_percent(self):
+        view = self._make_view()
+        result = view._get_progress_bar(50)
+        assert "50%" in result
+        assert "█" in result
+
+    def test_unknown_string(self):
+        view = self._make_view()
+        result = view._get_progress_bar("unknown")
+        assert "unknown" in result
 
 
 class TestStageOf:
