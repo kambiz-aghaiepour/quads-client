@@ -1242,13 +1242,13 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines on how to contribute to th
   <img src="images/track1.png" alt="Live move tracking" width="600">
 </p>
 
-**Scheduled moves awaiting next move cycle**
+**Flash Gordon(tm) means activity**
 
 <p align="left">
   <img src="images/track2.png" alt="Scheduled moves awaiting move cycle" width="600">
 </p>
 
-**Activity summary grouped by cloud**
+**Granular activity tracking by Server**
 
 <p align="left">
   <img src="images/track3.png" alt="Activity summary grouped by cloud" width="600">
