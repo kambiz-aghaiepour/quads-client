@@ -114,7 +114,9 @@ class TrackCommands:
 
     def _wait_for_active_all(self, api, console, cloud, pending):
         try:
-            with Live(self._build_pending_table(pending), console=console, refresh_per_second=0.2) as live:
+            with Live(
+                self._build_pending_table(pending), console=console, refresh_per_second=0.2, transient=True
+            ) as live:
                 while True:
                     time.sleep(10)
                     active = api.get_all_move_status(cloud=cloud)
@@ -130,7 +132,9 @@ class TrackCommands:
 
     def _wait_for_active_single(self, api, console, hostname, pending):
         try:
-            with Live(self._build_pending_table(pending), console=console, refresh_per_second=0.2) as live:
+            with Live(
+                self._build_pending_table(pending), console=console, refresh_per_second=0.2, transient=True
+            ) as live:
                 while True:
                     time.sleep(10)
                     data = api.get_move_status(hostname)
