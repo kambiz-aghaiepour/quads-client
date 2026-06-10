@@ -1,6 +1,19 @@
 # CHANGELOG
 
 
+## v0.8.4 (2026-06-10)
+
+### Bug Fixes
+
+- Simplify startup CLI banner
+  ([`39750d5`](https://github.com/quadsproject/quads-client/commit/39750d501f729232ee8d196f9cdc355056478afb))
+
+### Chores
+
+- Update RPM spec version to 0.8.3
+  ([`86d4bd8`](https://github.com/quadsproject/quads-client/commit/86d4bd8a6917080b44f2a413f8790e3da79e3a24))
+
+
 ## v0.8.3 (2026-06-10)
 
 ### Bug Fixes
