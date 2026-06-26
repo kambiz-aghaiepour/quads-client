@@ -46,7 +46,10 @@ class TrackCommands:
                 handle_api_error(self.shell, e, "Track")
 
     def _track_single(self, api, console, hostname):
-        data = api.get_move_status(hostname)
+        try:
+            data = api.get_move_status(hostname)
+        except Exception:
+            data = None
 
         if not data:
             pending = self._get_pending_moves(api, hostname=hostname)
@@ -57,21 +60,41 @@ class TrackCommands:
             if not data:
                 return
 
+        completed = False
+        last_data = dict(data)
+        gone_count = 0
         try:
             with Live(self._build_single_table(data), console=console, refresh_per_second=0.2) as live:
                 while True:
                     time.sleep(5)
-                    data = api.get_move_status(hostname)
+                    try:
+                        data = api.get_move_status(hostname)
+                    except Exception:
+                        data = None
                     if not data:
+                        gone_count += 1
+                        if gone_count < 6:
+                            continue
+                        last_data["status"] = "completed"
+                        last_data["message"] = "Completed"
+                        live.update(self._build_single_table(last_data))
+                        completed = True
+                        time.sleep(1)
                         break
+                    gone_count = 0
+                    last_data = dict(data)
                     live.update(self._build_single_table(data))
                     status = data.get("status", "")
                     if status in ("completed", "failed"):
+                        completed = True
                         time.sleep(1)
                         break
         except KeyboardInterrupt:
             pass
-        console.print("[dim]Stopped tracking.[/dim]")
+        if completed:
+            console.print("[dim]Move completed.[/dim]")
+        else:
+            console.print("[dim]Stopped tracking.[/dim]")
 
     def _track_all(self, api, console, cloud=None):
         moves = api.get_all_move_status(cloud=cloud)
@@ -86,19 +109,44 @@ class TrackCommands:
             if not moves:
                 return
 
+        completed = False
+        last_moves = list(moves)
+        gone_count = 0
         try:
             with Live(self._build_all_table(moves), console=console, refresh_per_second=0.2) as live:
                 while True:
                     time.sleep(5)
-                    moves = api.get_all_move_status(cloud=cloud)
+                    try:
+                        moves = api.get_all_move_status(cloud=cloud)
+                    except Exception:
+                        moves = []
                     if not moves:
+                        gone_count += 1
+                        if gone_count < 6:
+                            continue
+                        for m in last_moves:
+                            m["status"] = "completed"
+                            m["message"] = "Completed"
+                        live.update(self._build_all_table(last_moves))
+                        completed = True
+                        time.sleep(1)
                         break
+                    gone_count = 0
+                    last_moves = list(moves)
                     live.update(self._build_all_table(moves))
+                    if all(m.get("status") in ("completed", "failed") for m in moves):
+                        completed = True
+                        time.sleep(1)
+                        break
         except KeyboardInterrupt:
             pass
 
-        count = len(moves) if moves else 0
-        console.print(f"[dim]Stopped tracking. {count} move(s) active.[/dim]")
+        if completed:
+            count = len(last_moves)
+            console.print(f"[dim]All moves completed. {count} host(s) finished.[/dim]")
+        else:
+            count = len(last_moves)
+            console.print(f"[dim]Stopped tracking. {count} move(s) active.[/dim]")
 
     def _get_pending_moves(self, api, cloud=None, hostname=None):
         try:
@@ -137,7 +185,10 @@ class TrackCommands:
             ) as live:
                 while True:
                     time.sleep(10)
-                    data = api.get_move_status(hostname)
+                    try:
+                        data = api.get_move_status(hostname)
+                    except Exception:
+                        data = None
                     if data:
                         return data
                     pending = self._get_pending_moves(api, hostname=hostname)
