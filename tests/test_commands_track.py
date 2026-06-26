@@ -16,8 +16,7 @@ def test_track_all_with_moves(mock_time, mock_live_cls, mock_shell):
     mock_shell.connection.api.get_all_move_status.side_effect = [
         [move_data],
         [move_data],
-        [],
-    ]
+    ] + [[] for _ in range(6)]
     mock_live_instance = MagicMock()
     mock_live_cls.return_value.__enter__ = MagicMock(return_value=mock_live_instance)
     mock_live_cls.return_value.__exit__ = MagicMock(return_value=False)
@@ -77,8 +76,7 @@ def test_track_no_active_moves_with_pending_transitions(mock_time, mock_live_cls
         [],
         active,
         active,
-        [],
-    ]
+    ] + [[] for _ in range(6)]
     mock_shell.connection.api.get_moves.return_value = pending
     mock_live_instance = MagicMock()
     mock_live_cls.return_value.__enter__ = MagicMock(return_value=mock_live_instance)
@@ -336,3 +334,190 @@ def test_build_pending_table(mock_shell):
     assert table.title == "Scheduled Moves (awaiting next move cycle)"
     assert "10s" in table.caption
     assert table.row_count == 2
+
+
+@patch("quads_client.commands.track.Live")
+@patch("quads_client.commands.track.time")
+def test_track_all_completes_on_disappear(mock_time, mock_live_cls, mock_shell):
+    """When all moves disappear from API after grace window, show completed 12/12"""
+    move_data = {
+        "host": "host1.example.com",
+        "status": "post_install",
+        "source_cloud": "cloud02",
+        "target_cloud": "cloud03",
+        "message": "Records updated",
+    }
+    mock_shell.connection.api.get_all_move_status.side_effect = [
+        [move_data],
+        [move_data],
+    ] + [[] for _ in range(6)]
+    mock_live_instance = MagicMock()
+    mock_live_cls.return_value.__enter__ = MagicMock(return_value=mock_live_instance)
+    mock_live_cls.return_value.__exit__ = MagicMock(return_value=False)
+
+    cmd = TrackCommands(mock_shell)
+    cmd.cmd_track("")
+
+    calls = mock_live_instance.update.call_args_list
+    assert len(calls) >= 2
+    mock_shell.rich_console.console.print.assert_called_once()
+    msg = mock_shell.rich_console.console.print.call_args[0][0]
+    assert "completed" in msg.lower()
+    assert "1 host" in msg
+
+
+@patch("quads_client.commands.track.Live")
+@patch("quads_client.commands.track.time")
+def test_track_single_completes_on_disappear(mock_time, mock_live_cls, mock_shell):
+    """When single host move disappears (APINotFound) after grace, show completed"""
+    initial = {
+        "host": "host1.example.com",
+        "status": "post_install",
+        "source_cloud": "cloud02",
+        "target_cloud": "cloud03",
+        "message": "Records updated",
+    }
+    mock_shell.connection.api.get_move_status.side_effect = [initial, initial] + [
+        Exception("No active move for host1.example.com") for _ in range(6)
+    ]
+    mock_live_instance = MagicMock()
+    mock_live_cls.return_value.__enter__ = MagicMock(return_value=mock_live_instance)
+    mock_live_cls.return_value.__exit__ = MagicMock(return_value=False)
+
+    cmd = TrackCommands(mock_shell)
+    cmd.cmd_track("host1.example.com")
+
+    calls = mock_live_instance.update.call_args_list
+    assert len(calls) >= 2
+    msg = mock_shell.rich_console.console.print.call_args[0][0]
+    assert "completed" in msg.lower()
+
+
+@patch("quads_client.commands.track.Live")
+@patch("quads_client.commands.track.time")
+def test_track_single_api_error_during_poll(mock_time, mock_live_cls, mock_shell):
+    """Generic exception during poll handled via grace window then completed"""
+    initial = {
+        "host": "host1.example.com",
+        "status": "provisioning",
+        "source_cloud": "cloud01",
+        "target_cloud": "cloud02",
+        "message": "Provisioner ready",
+    }
+    mock_shell.connection.api.get_move_status.side_effect = [initial] + [
+        ConnectionError("Connection refused") for _ in range(6)
+    ]
+    mock_live_instance = MagicMock()
+    mock_live_cls.return_value.__enter__ = MagicMock(return_value=mock_live_instance)
+    mock_live_cls.return_value.__exit__ = MagicMock(return_value=False)
+
+    cmd = TrackCommands(mock_shell)
+    cmd.cmd_track("host1.example.com")
+
+    msg = mock_shell.rich_console.console.print.call_args[0][0]
+    assert "completed" in msg.lower()
+
+
+@patch("quads_client.commands.track.Live")
+@patch("quads_client.commands.track.time")
+def test_track_all_terminal_status_exit(mock_time, mock_live_cls, mock_shell):
+    """Moves reaching completed/failed in API response trigger clean exit"""
+    active = {
+        "host": "host1.example.com",
+        "status": "provisioning",
+        "source_cloud": "cloud01",
+        "target_cloud": "cloud02",
+    }
+    done = {
+        "host": "host1.example.com",
+        "status": "completed",
+        "source_cloud": "cloud01",
+        "target_cloud": "cloud02",
+    }
+    mock_shell.connection.api.get_all_move_status.side_effect = [
+        [active],
+        [done],
+    ]
+    mock_live_instance = MagicMock()
+    mock_live_cls.return_value.__enter__ = MagicMock(return_value=mock_live_instance)
+    mock_live_cls.return_value.__exit__ = MagicMock(return_value=False)
+
+    cmd = TrackCommands(mock_shell)
+    cmd.cmd_track("")
+
+    msg = mock_shell.rich_console.console.print.call_args[0][0]
+    assert "completed" in msg.lower()
+
+
+@patch("quads_client.commands.track.Live")
+@patch("quads_client.commands.track.time")
+def test_track_all_transient_disappear_recovers(mock_time, mock_live_cls, mock_shell):
+    """API returns empty for a few polls then data comes back -- no premature exit"""
+    move_data = {
+        "host": "host1.example.com",
+        "status": "provisioning",
+        "source_cloud": "cloud01",
+        "target_cloud": "cloud02",
+        "message": "Provisioner ready",
+    }
+    done = {
+        "host": "host1.example.com",
+        "status": "completed",
+        "source_cloud": "cloud01",
+        "target_cloud": "cloud02",
+        "message": "Completed",
+    }
+    mock_shell.connection.api.get_all_move_status.side_effect = [
+        [move_data],
+        [],
+        [],
+        [move_data],
+        [done],
+    ]
+    mock_live_instance = MagicMock()
+    mock_live_cls.return_value.__enter__ = MagicMock(return_value=mock_live_instance)
+    mock_live_cls.return_value.__exit__ = MagicMock(return_value=False)
+
+    cmd = TrackCommands(mock_shell)
+    cmd.cmd_track("")
+
+    msg = mock_shell.rich_console.console.print.call_args[0][0]
+    assert "completed" in msg.lower()
+    assert mock_shell.connection.api.get_all_move_status.call_count == 5
+
+
+@patch("quads_client.commands.track.Live")
+@patch("quads_client.commands.track.time")
+def test_track_single_transient_disappear_recovers(mock_time, mock_live_cls, mock_shell):
+    """APINotFound for a few polls then data returns -- tracking resumes"""
+    initial = {
+        "host": "host1.example.com",
+        "status": "provisioning",
+        "source_cloud": "cloud01",
+        "target_cloud": "cloud02",
+        "message": "Provisioner ready",
+    }
+    done = {
+        "host": "host1.example.com",
+        "status": "completed",
+        "source_cloud": "cloud01",
+        "target_cloud": "cloud02",
+        "message": "Completed",
+    }
+    mock_shell.connection.api.get_move_status.side_effect = [
+        initial,
+        Exception("No active move"),
+        Exception("No active move"),
+        initial,
+        done,
+    ]
+    mock_live_instance = MagicMock()
+    mock_live_cls.return_value.__enter__ = MagicMock(return_value=mock_live_instance)
+    mock_live_cls.return_value.__exit__ = MagicMock(return_value=False)
+
+    cmd = TrackCommands(mock_shell)
+    cmd.cmd_track("host1.example.com")
+
+    msg = mock_shell.rich_console.console.print.call_args[0][0]
+    assert "completed" in msg.lower()
+    assert mock_shell.connection.api.get_move_status.call_count == 5
