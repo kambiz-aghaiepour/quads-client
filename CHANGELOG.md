@@ -1,6 +1,19 @@
 # CHANGELOG
 
 
+## v0.8.6 (2026-06-27)
+
+### Bug Fixes
+
+- Remove some dead code paths in track.py
+  ([`f3ddfd9`](https://github.com/quadsproject/quads-client/commit/f3ddfd904a58a65a415f72c56d08babd161834b6))
+
+### Chores
+
+- Update RPM spec version to 0.8.5
+  ([`57a33ba`](https://github.com/quadsproject/quads-client/commit/57a33ba92ccb7ddc9851d2cc0002ca9f3b7ae722))
+
+
 ## v0.8.5 (2026-06-26)
 
 ### Bug Fixes
