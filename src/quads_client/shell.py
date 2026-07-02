@@ -818,6 +818,26 @@ class QuadsClientShell(cmd2.Cmd):
         """Shrink a schedule"""
         self.schedule_commands.cmd_shrink(args)
 
+    def complete_ls_available(self, text, line, begidx, endidx):
+        """Autocomplete for ls_available command - filter keywords"""
+        keywords = [
+            "start",
+            "end",
+            "model",
+            "ram",
+            "gpu-vendor",
+            "gpu-product",
+            "disk-size",
+            "disk-type",
+            "disk-count",
+            "interfaces",
+            "nic-vendor",
+            "nic-speed",
+        ]
+        if text:
+            return [k for k in keywords if k.startswith(text)]
+        return keywords
+
     def do_ls_available(self, args):
         """List available hosts"""
         self.available_commands.cmd_ls_available(args)
