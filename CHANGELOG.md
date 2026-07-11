@@ -1,6 +1,542 @@
 # CHANGELOG
 
 
+## v0.8.7 (2026-07-02)
+
+### Bug Fixes
+
+- Add additional test coverage
+  ([`bfbe21a`](https://github.com/quadsproject/quads-client/commit/bfbe21a01215f2f2ffd3816335e946e796ac8238))
+
+- Add nic-vendor and nic-speed filters to CLI.
+  ([`71e910b`](https://github.com/quadsproject/quads-client/commit/71e910ba040b289598615df3e23c8f088faaa2ff))
+
+- Add rest of hw filters and mappings.
+  ([`1d3a44d`](https://github.com/quadsproject/quads-client/commit/1d3a44db2c165a91e76cc75c869e55fa1bd06c24))
+
+- arg_parser.py -- Added 8 new filter keywords (disk-type, disk-size, disk-count, gpu-vendor,
+  gpu-product, interfaces, nic-vendor, nic-speed) to the SSM schedule parser: result dict,
+  description terminator list, and elif parsing branches - user.py -- Added 8 filter mappings in
+  cmd_schedule() count mode, passing correct API keys to filter_available() (e.g., disks.disk_type,
+  processors.vendor, interfaces.speed__gte) - shell.py -- Added 8 new keywords to
+  complete_schedule() tab completion - gui/views/schedule.py -- Added 5 reverse-mappings in the
+  command builder so GUI advanced filters pass through to the CLI schedule command -
+  test_arg_parser.py -- 11 new tests (8 individual filters + combined + description terminator) -
+  test_commands_unified_schedule.py -- 4 new tests verifying filter_available receives correct API
+  filter dicts
+
+Assisted-by: claude
+
+- Add Tab completion for ls-available and sched.
+  ([`776837c`](https://github.com/quadsproject/quads-client/commit/776837c3d6d6bbbfa5bb66c102709d10953f9aaf))
+
+- Fix black formatting
+  ([`b50ee97`](https://github.com/quadsproject/quads-client/commit/b50ee97ef5576e204292ce76fdd0f3630fb580d1))
+
+- Has-gpu and gpu-product/vendor
+  ([`0d3c69e`](https://github.com/quadsproject/quads-client/commit/0d3c69e94bf2fa1830bfdfabeaee077482aa1f00))
+
+* We weren't correctly filtering GPU product and vendor. * Has GPU in quads-client-gui not filtering
+  correctly.
+
+### Chores
+
+- Update RPM spec version to 0.8.6
+  ([`cafafbe`](https://github.com/quadsproject/quads-client/commit/cafafbe12d29f3c63c44a77764ea0bc35c42ac1b))
+
+
+## v0.8.6 (2026-06-27)
+
+### Bug Fixes
+
+- Remove some dead code paths in track.py
+  ([`f3ddfd9`](https://github.com/quadsproject/quads-client/commit/f3ddfd904a58a65a415f72c56d08babd161834b6))
+
+### Chores
+
+- Update RPM spec version to 0.8.5
+  ([`57a33ba`](https://github.com/quadsproject/quads-client/commit/57a33ba92ccb7ddc9851d2cc0002ca9f3b7ae722))
+
+
+## v0.8.5 (2026-06-26)
+
+### Bug Fixes
+
+- Add more resilience to tracking move stages.
+  ([`4c783cc`](https://github.com/quadsproject/quads-client/commit/4c783cc802dbcc35e4891adde33d7ec5e0abc3fb))
+
+* Add further resilience to CLI activity tracking.
+
+related-to: https://github.com/quadsproject/quads/issues/692
+
+fixes: https://github.com/quadsproject/quads-client/issues/141
+
+### Chores
+
+- Update image
+  ([`a514671`](https://github.com/quadsproject/quads-client/commit/a514671ebb6b539b08fcf0c39cb4e30ca0b5f20a))
+
+- Update RPM spec version to 0.8.4
+  ([`9ec3fa4`](https://github.com/quadsproject/quads-client/commit/9ec3fa4c55fedebb5411ddbc4d4ada3f3940f1df))
+
+
+## v0.8.4 (2026-06-10)
+
+### Bug Fixes
+
+- Simplify startup CLI banner
+  ([`39750d5`](https://github.com/quadsproject/quads-client/commit/39750d501f729232ee8d196f9cdc355056478afb))
+
+### Chores
+
+- Update RPM spec version to 0.8.3
+  ([`86d4bd8`](https://github.com/quadsproject/quads-client/commit/86d4bd8a6917080b44f2a413f8790e3da79e3a24))
+
+
+## v0.8.3 (2026-06-10)
+
+### Bug Fixes
+
+- Default_server should be set by CLI onboarding.
+  ([`c472e81`](https://github.com/quadsproject/quads-client/commit/c472e810d25d488bf388005588857b709d9c01fc))
+
+### Chores
+
+- Update onboard docs
+  ([`7b1f927`](https://github.com/quadsproject/quads-client/commit/7b1f9274d82c8b72a848bed1c387a289e24d15d4))
+
+- Update RPM spec version to 0.8.2
+  ([`9ef98a1`](https://github.com/quadsproject/quads-client/commit/9ef98a199c2dc7175f26739bbd20b4501f966dfe))
+
+
+## v0.8.2 (2026-06-09)
+
+### Bug Fixes
+
+- Clear previous tracking CLI elements.
+  ([`4de998e`](https://github.com/quadsproject/quads-client/commit/4de998e06d543266d3117340dfefe1d5987ce35e))
+
+When transitioning from the "waiting room" pre-move to actual polling/status API move status we
+  inherently leave the previous views on the screen.
+
+### Chores
+
+- Update RPM spec version to 0.8.1
+  ([`012a978`](https://github.com/quadsproject/quads-client/commit/012a978348aad419ddccbd0fbdda75cfb928d422))
+
+
+## v0.8.1 (2026-06-09)
+
+### Bug Fixes
+
+- Add proper awareness for awaiting_move
+  ([`3ab4575`](https://github.com/quadsproject/quads-client/commit/3ab4575db7a84642677545376df9350839c07b47))
+
+This was done in CLI but not everywhere and not done in the GUI.
+
+- Refactor for interim move statuses.
+  ([`187747d`](https://github.com/quadsproject/quads-client/commit/187747d77c5205a5381adfed2d872856ccec0487))
+
+- _show_pending_moves refactored into _get_pending_moves (returns the list instead of printing) -
+  _wait_for_active_all and _wait_for_active_single -- new methods that show a live Rich table of
+  scheduled moves, poll every 10s, and return active move data once the server's move cycle starts
+  (or None on Ctrl+C) - _build_pending_table -- builds the Rich table with caption showing "Last
+  check: HH:MM:SS | Refresh: 10s | Ctrl+C to stop" - Both _track_single and _track_all now: get
+  pending -> wait for active (live polling) -> seamlessly transition into the existing 5s live
+  tracking loop
+
+Assisted-by: claude
+
+### Chores
+
+- Fix test coverage
+  ([`9806cc0`](https://github.com/quadsproject/quads-client/commit/9806cc0704ba761244309c9bf96625c6054bbd2e))
+
+- Update doc descriptions
+  ([`630b423`](https://github.com/quadsproject/quads-client/commit/630b42369959bf4b71d1f2c3dbb4488936b03b3c))
+
+- Update RPM spec version to 0.8.0
+  ([`a3b022f`](https://github.com/quadsproject/quads-client/commit/a3b022f507a467236be39d0103f668f8d83df530))
+
+
+## v0.8.0 (2026-06-09)
+
+### Bug Fixes
+
+- Add additional code surface.
+  ([`0266d56`](https://github.com/quadsproject/quads-client/commit/0266d56e44c38e1e0c98b83e6e964970b3a2350e))
+
+### Chores
+
+- Update RPM spec version to 0.7.2
+  ([`d751d22`](https://github.com/quadsproject/quads-client/commit/d751d22faed57a7e74da2e26f2649e40c8d31a78))
+
+### Features
+
+- Add ack for future actions, docs.
+  ([`f64132d`](https://github.com/quadsproject/quads-client/commit/f64132d00c31dc406e86174e529c0269ec10b6e5))
+
+fixes: https://github.com/quadsproject/quads-client/issues/125
+
+- Add activity and tracking to CLI.
+  ([`b43a6aa`](https://github.com/quadsproject/quads-client/commit/b43a6aaa01ae01ddaf1b9bd7370f62d38698cc9d))
+
+Feature A: track command (src/quads_client/commands/track.py) - track -- live-refreshing Rich table
+  of all active moves (5s poll) - track hostname -- single-host detailed tracking - track cloud03 --
+  filter by target cloud - Ctrl+C exits cleanly, auto-exits when all moves complete or fail
+
+Feature B: Prompt activity indicator (shell.py) - postcmd() hook refreshes the prompt after every
+  command - _get_activity_indicator() checks for active moves with 30s cache TTL - Shows ⚡ in yellow
+  between server name and admin badge when moves are active
+
+Feature C: activity command (src/quads_client/commands/moves.py) - One-shot cloud-grouped summary
+  with icons, stage names, and progress - Format: "Active Operations: N move(s) across M cloud(s)"
+  with per-cloud host listings
+
+Assisted-by: claude
+
+
+## v0.7.2 (2026-06-09)
+
+### Bug Fixes
+
+- Failed moves don't get tracked, fix my_hosts view
+  ([`f21647c`](https://github.com/quadsproject/quads-client/commit/f21647c73c7135735ffadd7b6e5142702edc1f97))
+
+related-to: https://github.com/quadsproject/quads/issues/663
+
+- Ui progress bar/views.
+  ([`6b36c4a`](https://github.com/quadsproject/quads-client/commit/6b36c4a26b280d488fde7cd92cf662728add6d3e))
+
+* Ensure views were reflecting move status * Fix stale rendering.
+
+- Use move_status everywhere.
+  ([`cd985d1`](https://github.com/quadsproject/quads-client/commit/cd985d1a4faef465382f1b3b4e749fc1a5a65922))
+
+We were not properly using move_status for move stage descriptions in a few places, namely the GUI.
+
+Assisted-by: claude
+
+### Chores
+
+- Fix tests
+  ([`db7bc9c`](https://github.com/quadsproject/quads-client/commit/db7bc9c684758cfbba9974a1457675b5f9ee3a8f))
+
+- Update RPM spec version to 0.7.1
+  ([`6c34e59`](https://github.com/quadsproject/quads-client/commit/6c34e596d7626c98042c3104fd194424bf658490))
+
+
+## v0.7.1 (2026-06-08)
+
+### Bug Fixes
+
+- Handle edge case for old QUADS servers.
+  ([`a24744c`](https://github.com/quadsproject/quads-client/commit/a24744c0d6b98e7e62a90199a3883f7fcf413aa3))
+
+### Chores
+
+- Update RPM spec version to 0.7.0
+  ([`ad4e469`](https://github.com/quadsproject/quads-client/commit/ad4e469629e74e4151051301aa8d1fabc57b8072))
+
+
+## v0.7.0 (2026-06-08)
+
+### Bug Fixes
+
+- Re-align with MoveStatus enum refactor
+  ([`44d0be6`](https://github.com/quadsproject/quads-client/commit/44d0be6487ad8014d1ee86ceb66c48659ee44f77))
+
+- Refactor for dropping MoveProgress DB structure
+  ([`2442bc7`](https://github.com/quadsproject/quads-client/commit/2442bc7208aa2ff1815f75fe1b542d22af27e995))
+
+- Thread Safety on GUI Teardown
+  ([`2a2013b`](https://github.com/quadsproject/quads-client/commit/2a2013be380da2a7cbbc9b706447bf96db72afa7))
+
+### Chores
+
+- Fix test linting
+  ([`d34f91b`](https://github.com/quadsproject/quads-client/commit/d34f91bf5bc98488a7cb6e324b60eee54a177e1b))
+
+- Update docs
+  ([`88c93d4`](https://github.com/quadsproject/quads-client/commit/88c93d4d0f71b0c6963bb33f787c612dc81258ca))
+
+- Update RPM spec version to 0.6.0
+  ([`75a7caf`](https://github.com/quadsproject/quads-client/commit/75a7caff1b8905bf87afc463c0a131f8b001c85f))
+
+### Features
+
+- Add support for polling/status API.
+  ([`0e650d1`](https://github.com/quadsproject/quads-client/commit/0e650d1d1f37c32c3cf42d29733782d1fabb10a1))
+
+related-to: https://github.com/quadsproject/quads/issues/661
+
+
+## v0.6.0 (2026-05-25)
+
+### Bug Fixes
+
+- Don't call api.login() when using api_token.
+  ([`2cf6807`](https://github.com/quadsproject/quads-client/commit/2cf68078fcf51e20c4c462422c71a07b70751c0d))
+
+Removed api.login() call from the connect() token path. The flow is now: 1.
+  QuadsApi.__init__(api_token=...) sets Bearer header on session 2. api.get_version() verifies
+  server is reachable 3. _detect_role_from_api() calls /users/{email} to get role
+
+- Regressions and login() usage
+  ([`b9ef915`](https://github.com/quadsproject/quads-client/commit/b9ef9152b22ba30eed9ded1a74aa7ff36623813f))
+
+### Chores
+
+- Fix codecov coverage complaints
+  ([`ffa3b86`](https://github.com/quadsproject/quads-client/commit/ffa3b8629f6357693b86b52b9b8c3570eacd81e7))
+
+Assisted-by: claude
+
+- Fix tests
+  ([`5f50d62`](https://github.com/quadsproject/quads-client/commit/5f50d624736bf52d5cb1b1bbabd73b9193aa80f1))
+
+Assisted-by: claude
+
+- Update docs for token mgmt
+  ([`a69ce62`](https://github.com/quadsproject/quads-client/commit/a69ce6262957f5a72af90a5de0efa2d09c0a7a48))
+
+- Update RPM spec version to 0.5.4
+  ([`bb545a5`](https://github.com/quadsproject/quads-client/commit/bb545a5f70ecda0aebf8087ca3aff86ce9fa16ff))
+
+### Features
+
+- Support qat_ SSO tokens for QUADS 3.x
+  ([`19a4732`](https://github.com/quadsproject/quads-client/commit/19a4732ca748d336f03959cbbb5bc9e6e0f2e94d))
+
+* Prioritize permanent SSO Token workflows (preferred) * Still support legacy workflows * Properly
+  support 40x API returns when admins have strict auth settings enabled disallowing legacy / anon
+  register/login workflows.
+
+
+## v0.5.4 (2026-05-16)
+
+### Bug Fixes
+
+- Missing UI buttons, use unicode blocks for compat
+  ([`a72ffbf`](https://github.com/quadsproject/quads-client/commit/a72ffbfb4e86ac93c7fa50827faaca573dfe6fe0))
+
+### Chores
+
+- Docs update
+  ([`14377a7`](https://github.com/quadsproject/quads-client/commit/14377a7a48813c948146fac39eb4640a931fe762))
+
+- Update RPM spec version to 0.5.3
+  ([`f147b1c`](https://github.com/quadsproject/quads-client/commit/f147b1c38057ba3765f48d6f0f0b6c0a55d46975))
+
+
+## v0.5.3 (2026-05-16)
+
+### Bug Fixes
+
+- Cli session title caching, session hotkeys
+  ([`ea461d9`](https://github.com/quadsproject/quads-client/commit/ea461d9fc9a970d970a80a670c170f32c5e5b608))
+
+fix: CLI session title caching, session hotkeys
+
+- Cli session title caching, session hotkeys
+  ([`0bf618e`](https://github.com/quadsproject/quads-client/commit/0bf618e65b2453d9039abb85b92e665638a7e930))
+
+* Fix session title caching * Implement control + a control + a to toggle between sessions * docs
+  cleanup
+
+Assisted-by: claude
+
+- Orphaned commands, readme
+  ([`e6af005`](https://github.com/quadsproject/quads-client/commit/e6af0058bb2eabd6a487a3995c972966d0df1d0b))
+
+### Chores
+
+- Update RPM spec version to 0.5.2
+  ([`fb9a71c`](https://github.com/quadsproject/quads-client/commit/fb9a71c8027ab61e7ad373d44d43cb78d4d9430e))
+
+- Update tests
+  ([`04c53e6`](https://github.com/quadsproject/quads-client/commit/04c53e6e7871a08853bbbf8020496948d97d1db1))
+
+
+## v0.5.2 (2026-05-15)
+
+### Bug Fixes
+
+- Date and color picker backgrounds for add schedule.
+  ([`ea906e1`](https://github.com/quadsproject/quads-client/commit/ea906e17246c07a16e9c42b83a05e30e0a5931c4))
+
+* We need better consistent dark/light theme backgrounds for date picker.
+
+- My hosts view in GUI for large assignments.
+  ([`c602af7`](https://github.com/quadsproject/quads-client/commit/c602af778f8d15e59cef222880d2d1bdfc969735))
+
+* We needed an outer scrollbar in the my hosts area for normal users. * We need to fix os list
+  dropdown and qinq for admin scheduling.
+
+Assisted-by: claude
+
+- Os, qinq drop-downs, assignment view outer accessibility, color theme fixes
+  ([`f2307a5`](https://github.com/quadsproject/quads-client/commit/f2307a5fdf3b20e2cea531eaab0093a22dd82057))
+
+fix: os, qinq drop-downs, assignment view outer accessibility, color theme fixes
+
+### Chores
+
+- Update RPM spec version to 0.5.1
+  ([`6314cbd`](https://github.com/quadsproject/quads-client/commit/6314cbdb8640746c1bd40f80667f877e31f7a80d))
+
+
+## v0.5.1 (2026-05-15)
+
+### Bug Fixes
+
+- Big performance increases/fixes
+  ([`36cdef4`](https://github.com/quadsproject/quads-client/commit/36cdef42463189d7d7d6a4adce45dbc7d894a633))
+
+1. gui/views/schedule.py — Deferred all API calls out of _create_ui(). VLAN/OS dropdowns now render
+  with placeholders and populate via _load_metadata_async() in a background thread.
+  _load_available_hosts() also converted from synchronous to threaded. 2.
+  gui/widgets/host_filters.py — Model and NIC vendor dropdowns now start empty, populated via new
+  populate_metadata_async() method using background thread. Both Schedule and Available views use
+  this. 3. gui/controllers/gui_shell.py — Added shared _get_cached_hosts() with TTL so
+  get_available_models() and get_available_nic_vendors() share a single get_hosts() API call instead
+  of two separate ones. 4. gui/views/available.py — Calls populate_metadata_async() on its filter
+  frame too
+
+Assisted-by: claude
+
+- Remove/hide commands, sort assignments, fixes
+  ([`e573e85`](https://github.com/quadsproject/quads-client/commit/e573e85a3f581ad3799bf3c2fef75abcf0642dae))
+
+* sort assignments list by cloud * eof, set, ipy, py — added to permanently_hidden (hidden from all
+  users) * debug_admin — added to admin_commands (hidden from normal users, whoami is sufficient) *
+  terminate — added to auth_required_commands
+
+related-to: https://github.com/quadsproject/quads-client/issues/93
+
+### Chores
+
+- Update RPM spec version to 0.5.0
+  ([`d6afd7f`](https://github.com/quadsproject/quads-client/commit/d6afd7fd7ac00d5c63681e86f8c681dba36734e5))
+
+- Update tests
+  ([`ac1acd9`](https://github.com/quadsproject/quads-client/commit/ac1acd904f754dd0aeaf86b0406cbab92c3265bb))
+
+
+## v0.5.0 (2026-05-14)
+
+### Chores
+
+- Fix flake8 CI
+  ([`c874ab9`](https://github.com/quadsproject/quads-client/commit/c874ab9ba9410bb22cef78450bdb1825454ee5f2))
+
+- Update RPM spec version to 0.4.12
+  ([`8a920d5`](https://github.com/quadsproject/quads-client/commit/8a920d58c8a9bfc6c3a1e78c1847e3f44400d556))
+
+### Features
+
+- Add support for os_list in CLI and GUI.
+  ([`e725ad9`](https://github.com/quadsproject/quads-client/commit/e725ad9dac780e1827553bdea5e0c8a5c979f92b))
+
+* Adds command os_list to CLI * Adds drop-down query for OS API endpoint via QuadsAPI (via
+  quads-lib) in admin and normal user GUI areas.
+
+Assisted-by: claude
+
+
+## v0.4.12 (2026-05-14)
+
+### Bug Fixes
+
+- Add_quads_server in first run, fix echo one-shot
+  ([`b1b2032`](https://github.com/quadsproject/quads-client/commit/b1b20323bda40f345ed6beaa66da117ad06c5784))
+
+### Chores
+
+- Fix black formatting
+  ([`5e994de`](https://github.com/quadsproject/quads-client/commit/5e994de2c8e168d7250bd78f267d74430010c058))
+
+- Update RPM spec version to 0.4.11
+  ([`a0e0e4d`](https://github.com/quadsproject/quads-client/commit/a0e0e4d572c83f86acbb6f3ec21605af8a87eecf))
+
+
+## v0.4.11 (2026-05-13)
+
+### Bug Fixes
+
+- Use getpass to hide pw input on add server
+  ([`a8563cd`](https://github.com/quadsproject/quads-client/commit/a8563cd90a9fcb8078e68b9d4fabba22ce649dc1))
+
+### Chores
+
+- Update RPM spec version to 0.4.10
+  ([`1d60342`](https://github.com/quadsproject/quads-client/commit/1d60342ce9e75e9743acdc7fe54cabf772dc0b3a))
+
+
+## v0.4.10 (2026-05-13)
+
+### Bug Fixes
+
+- Edit-server, simplify onboard flows for CLI
+  ([`9cc226d`](https://github.com/quadsproject/quads-client/commit/9cc226d0ab719303ebed8ffb7ced4b6ffd38b0fc))
+
+- Show create/expire date on my_assignments in TUI
+  ([`4380b78`](https://github.com/quadsproject/quads-client/commit/4380b783e0b46e341e9a84cacddf7c9a30a859ba))
+
+### Chores
+
+- Update RPM spec version to 0.4.9
+  ([`939e590`](https://github.com/quadsproject/quads-client/commit/939e5902030c93b11a0edbc2917f7fbd8483fb9a))
+
+
+## v0.4.9 (2026-05-12)
+
+### Bug Fixes
+
+- My_hosts should show cloud, assignment id
+  ([`a0b45df`](https://github.com/quadsproject/quads-client/commit/a0b45df668c72e0602d4799fa999d586f20ad0a2))
+
+### Chores
+
+- Update RPM spec version to 0.4.8
+  ([`970f714`](https://github.com/quadsproject/quads-client/commit/970f714f1c0d4db9a686af603ebe920f345f851d))
+
+
+## v0.4.8 (2026-05-12)
+
+### Bug Fixes
+
+- My_hosts not returning correctly for SSM user
+  ([`29d975b`](https://github.com/quadsproject/quads-client/commit/29d975b881db8ad5e4e90925572f7ebbb67eed4d))
+
+### Chores
+
+- Update RPM spec version to 0.4.7
+  ([`d684321`](https://github.com/quadsproject/quads-client/commit/d684321ed8d651f9d1c1d6c965bf52f950664c4b))
+
+
+## v0.4.7 (2026-05-12)
+
+### Bug Fixes
+
+- Use truststore for darwin users
+  ([`10294a1`](https://github.com/quadsproject/quads-client/commit/10294a1273c9ca06bb5ae7fbd53a75417d3bc748))
+
+This allows for the SSL verify to remain checked, and use the system trust store on darwin. This can
+  also be done on linux, though some distributions may not have python3-truststore bundled and users
+  may not wish to pip install into a venv.
+
+- Use truststore for Mac Users
+  ([`270d67f`](https://github.com/quadsproject/quads-client/commit/270d67fe6967a3e9e91cddfcb4c1603f8bca50fb))
+
+fix: use truststore for Mac Users for TLS verification using pip instal
+
+### Chores
+
+- Update RPM spec version to 0.4.6
+  ([`d2cd9e3`](https://github.com/quadsproject/quads-client/commit/d2cd9e33a1cac7ad81d69c19cb33ea6e81a3bb2b))
+
+
 ## v0.4.6 (2026-05-12)
 
 ### Bug Fixes

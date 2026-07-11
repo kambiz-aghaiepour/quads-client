@@ -54,7 +54,9 @@ def parse_schedule_ssm_args(args):
         args: Command arguments string
 
     Returns:
-        dict with keys: count, host_list, description, wipe, vlan, qinq, model, ram
+        dict with keys: count, host_list, description, wipe, vlan, qinq, model, ram,
+        disk_type, disk_size, disk_count, gpu_vendor, gpu_product, interfaces,
+        nic_vendor, nic_speed
 
     Raises:
         ValueError: If arguments are invalid
@@ -70,8 +72,17 @@ def parse_schedule_ssm_args(args):
         "wipe": True,  # Default: wipe enabled
         "vlan": None,
         "qinq": None,  # Optional: only set if user specifies
+        "os": None,
         "model": None,
         "ram": None,
+        "disk_type": None,
+        "disk_size": None,
+        "disk_count": None,
+        "gpu_vendor": None,
+        "gpu_product": None,
+        "interfaces": None,
+        "nic_vendor": None,
+        "nic_speed": None,
     }
 
     # Parse first positional argument (count/hosts/host-list)
@@ -99,7 +110,22 @@ def parse_schedule_ssm_args(args):
             # Collect description until next keyword
             desc_parts = []
             i += 1
-            while i < len(parts) and parts[i] not in ["nowipe", "vlan", "qinq", "model", "ram"]:
+            while i < len(parts) and parts[i] not in [
+                "nowipe",
+                "vlan",
+                "qinq",
+                "os",
+                "model",
+                "ram",
+                "disk-type",
+                "disk-size",
+                "disk-count",
+                "gpu-vendor",
+                "gpu-product",
+                "interfaces",
+                "nic-vendor",
+                "nic-speed",
+            ]:
                 desc_parts.append(parts[i])
                 i += 1
             result["description"] = " ".join(desc_parts)
@@ -112,13 +138,57 @@ def parse_schedule_ssm_args(args):
         elif parts[i] == "qinq" and i + 1 < len(parts):
             result["qinq"] = int(parts[i + 1])
             i += 2
+        elif parts[i] == "os" and i + 1 < len(parts):
+            result["os"] = parts[i + 1]
+            i += 2
         elif parts[i] == "model" and i + 1 < len(parts):
             result["model"] = parts[i + 1]
             i += 2
         elif parts[i] == "ram" and i + 1 < len(parts):
             result["ram"] = int(parts[i + 1])
             i += 2
+        elif parts[i] == "disk-type" and i + 1 < len(parts):
+            result["disk_type"] = parts[i + 1]
+            i += 2
+        elif parts[i] == "disk-size" and i + 1 < len(parts):
+            result["disk_size"] = int(parts[i + 1])
+            i += 2
+        elif parts[i] == "disk-count" and i + 1 < len(parts):
+            result["disk_count"] = int(parts[i + 1])
+            i += 2
+        elif parts[i] == "gpu-vendor" and i + 1 < len(parts):
+            result["gpu_vendor"] = parts[i + 1]
+            i += 2
+        elif parts[i] == "gpu-product" and i + 1 < len(parts):
+            result["gpu_product"] = parts[i + 1]
+            i += 2
+        elif parts[i] == "interfaces" and i + 1 < len(parts):
+            result["interfaces"] = int(parts[i + 1])
+            i += 2
+        elif parts[i] == "nic-vendor" and i + 1 < len(parts):
+            result["nic_vendor"] = parts[i + 1]
+            i += 2
+        elif parts[i] == "nic-speed" and i + 1 < len(parts):
+            result["nic_speed"] = int(parts[i + 1])
+            i += 2
         else:
+            value_keywords = [
+                "vlan",
+                "qinq",
+                "os",
+                "model",
+                "ram",
+                "disk-type",
+                "disk-size",
+                "disk-count",
+                "gpu-vendor",
+                "gpu-product",
+                "interfaces",
+                "nic-vendor",
+                "nic-speed",
+            ]
+            if parts[i] in value_keywords:
+                raise ValueError(f"'{parts[i]}' requires a value")
             i += 1
 
     if not result["description"]:
@@ -156,7 +226,8 @@ def parse_schedule_admin_args(args):
     if len(parts) < 4:
         raise ValueError(
             "Usage: schedule <cloud> <hosts|host-list path> <start> <end> [description <text>] "
-            "[cloud-owner <user>] [cloud-ticket <id>] [cc-users <users>] [vlan <id>] [qinq <0|1>] [nowipe]"
+            "[cloud-owner <user>] [cloud-ticket <id>] [cc-users <users>] "
+            "[vlan <id>] [qinq <0|1>] [os <title>] [nowipe]"
         )
 
     result = {
@@ -170,6 +241,7 @@ def parse_schedule_admin_args(args):
         "cloud_ticket": None,
         "vlan": None,
         "qinq": None,
+        "os": None,
         "wipe": True,  # Default: wipe enabled (systems wiped before new tenants)
         "nowipe": False,
     }
@@ -190,7 +262,7 @@ def parse_schedule_admin_args(args):
         params_start = 2
 
     # Extract start/end dates (must come before optional keywords)
-    keywords = ["description", "cloud-owner", "cc-users", "cloud-ticket", "vlan", "qinq", "nowipe"]
+    keywords = ["description", "cloud-owner", "cc-users", "cloud-ticket", "vlan", "qinq", "os", "nowipe"]
     if params_start + 2 <= len(parts):
         # Check if next items are dates or keywords
         if parts[params_start] not in keywords:
@@ -235,6 +307,9 @@ def parse_schedule_admin_args(args):
                 result["qinq"] = qinq_val
             except ValueError as e:
                 raise ValueError(f"Invalid QinQ value: {e}")
+            i += 2
+        elif parts[i] == "os" and i + 1 < len(parts):
+            result["os"] = parts[i + 1]
             i += 2
         elif parts[i] == "nowipe":
             result["wipe"] = False  # Disable wiping
@@ -286,5 +361,60 @@ def parse_extend_args(args):
         result["date"] = date_str
     else:
         raise ValueError("Second argument must be 'weeks' or 'date'")
+
+    return result
+
+
+def parse_shrink_args(args):
+    """
+    Parse shrink command arguments.
+
+    Syntax: shrink <cloud|hostname> weeks <N>
+            shrink <cloud|hostname> days <N>
+            shrink <cloud|hostname> now
+            shrink <cloud|hostname> date <YYYY-MM-DD HH:MM>
+
+    Returns:
+        dict with keys: target, mode, weeks, days, date
+
+    Raises:
+        ValueError: If arguments are invalid
+    """
+    parts = shlex.split(args)
+    if len(parts) < 2:
+        raise ValueError("Usage: shrink <cloud|hostname> weeks <N> | days <N> | now | date <YYYY-MM-DD HH:MM>")
+
+    result = {
+        "target": parts[0],
+        "mode": parts[1],
+        "weeks": None,
+        "days": None,
+        "date": None,
+    }
+
+    if parts[1] == "now":
+        if len(parts) > 2:
+            raise ValueError("'now' takes no additional arguments")
+    elif parts[1] == "weeks":
+        if len(parts) < 3:
+            raise ValueError("weeks requires a number")
+        try:
+            result["weeks"] = int(parts[2])
+        except ValueError:
+            raise ValueError("weeks requires a number")
+    elif parts[1] == "days":
+        if len(parts) < 3:
+            raise ValueError("days requires a number")
+        try:
+            result["days"] = int(parts[2])
+        except ValueError:
+            raise ValueError("days requires a number")
+    elif parts[1] == "date":
+        date_str = " ".join(parts[2:]).strip('"')
+        if not date_str:
+            raise ValueError("date requires a value in format YYYY-MM-DD HH:MM")
+        result["date"] = date_str
+    else:
+        raise ValueError("Second argument must be 'weeks', 'days', 'now', or 'date'")
 
     return result

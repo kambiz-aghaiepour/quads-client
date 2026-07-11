@@ -6,25 +6,31 @@ def main():
     """
     Main entry point for quads-client.
 
-    Supports two modes:
+    Supports three modes:
     - Interactive mode: quads-client
     - One-shot mode: quads-client <command>
+    - Piped mode: echo 'command' | quads-client
     """
-    # Detect one-shot mode
     is_oneshot = len(sys.argv) > 1
+    is_piped = not sys.stdin.isatty()
 
-    # Create shell with quiet mode for one-shot
-    shell = QuadsClientShell(quiet=is_oneshot)
+    shell = QuadsClientShell(quiet=is_oneshot or is_piped)
 
     if is_oneshot:
-        # One-shot mode: execute single command and exit
         cmd_str = " ".join(sys.argv[1:])
-
-        # Auto-connect to default server if needed
         exit_code = shell.execute_oneshot_command(cmd_str)
         sys.exit(exit_code)
+    elif is_piped:
+        exit_code = 0
+        for line in sys.stdin:
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            result = shell.execute_oneshot_command(line)
+            if result != 0:
+                exit_code = result
+        sys.exit(exit_code)
     else:
-        # Interactive mode
         shell.cmdloop()
 
 

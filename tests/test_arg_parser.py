@@ -6,6 +6,7 @@ from quads_client.arg_parser import (
     parse_schedule_ssm_args,
     parse_schedule_admin_args,
     parse_extend_args,
+    parse_shrink_args,
 )
 
 
@@ -145,6 +146,106 @@ class TestParseScheduleSSMArgs:
         assert result["description"] == "This is a long description"
         assert result["model"] == "r640"
 
+    def test_os_option(self):
+        """Test os option"""
+        result = parse_schedule_ssm_args('2 description "Test" os "RHEL 9.4"')
+        assert result["os"] == "RHEL 9.4"
+
+    def test_os_default_none(self):
+        """Test that os defaults to None"""
+        result = parse_schedule_ssm_args('2 description "Test"')
+        assert result["os"] is None
+
+    def test_all_options_with_os(self):
+        """Test all options combined including os"""
+        result = parse_schedule_ssm_args(
+            '3 description "Full test" model r640 ram 128 vlan 1150 qinq 1 os "RHEL 9.4" nowipe'
+        )
+        assert result["os"] == "RHEL 9.4"
+        assert result["model"] == "r640"
+        assert result["vlan"] == 1150
+
+    def test_disk_type_option(self):
+        """Test disk-type option"""
+        result = parse_schedule_ssm_args('2 description "Test" disk-type nvme')
+        assert result["disk_type"] == "nvme"
+
+    def test_disk_size_option(self):
+        """Test disk-size option"""
+        result = parse_schedule_ssm_args('2 description "Test" disk-size 500')
+        assert result["disk_size"] == 500
+
+    def test_disk_count_option(self):
+        """Test disk-count option"""
+        result = parse_schedule_ssm_args('2 description "Test" disk-count 4')
+        assert result["disk_count"] == 4
+
+    def test_gpu_vendor_option(self):
+        """Test gpu-vendor option"""
+        result = parse_schedule_ssm_args('2 description "Test" gpu-vendor NVIDIA')
+        assert result["gpu_vendor"] == "NVIDIA"
+
+    def test_gpu_product_option(self):
+        """Test gpu-product option"""
+        result = parse_schedule_ssm_args('2 description "Test" gpu-product "Tesla V100"')
+        assert result["gpu_product"] == "Tesla V100"
+
+    def test_interfaces_option(self):
+        """Test interfaces option"""
+        result = parse_schedule_ssm_args('2 description "Test" interfaces 4')
+        assert result["interfaces"] == 4
+
+    def test_nic_vendor_option(self):
+        """Test nic-vendor option"""
+        result = parse_schedule_ssm_args('2 description "Test" nic-vendor Mellanox')
+        assert result["nic_vendor"] == "Mellanox"
+
+    def test_nic_speed_option(self):
+        """Test nic-speed option"""
+        result = parse_schedule_ssm_args('2 description "Test" nic-speed 25')
+        assert result["nic_speed"] == 25
+
+    def test_all_hardware_filters_combined(self):
+        """Test all hardware metadata filters together"""
+        result = parse_schedule_ssm_args(
+            '3 description "Full HW test" model r640 ram 128 '
+            "disk-type nvme disk-size 500 disk-count 4 "
+            "gpu-vendor NVIDIA interfaces 4 "
+            "nic-vendor Mellanox nic-speed 25"
+        )
+        assert result["count"] == 3
+        assert result["description"] == "Full HW test"
+        assert result["model"] == "r640"
+        assert result["ram"] == 128
+        assert result["disk_type"] == "nvme"
+        assert result["disk_size"] == 500
+        assert result["disk_count"] == 4
+        assert result["gpu_vendor"] == "NVIDIA"
+        assert result["interfaces"] == 4
+        assert result["nic_vendor"] == "Mellanox"
+        assert result["nic_speed"] == 25
+
+    def test_description_terminates_at_hardware_filter(self):
+        """Test that multi-word description stops at hardware filter keywords"""
+        result = parse_schedule_ssm_args("2 description GPU performance testing gpu-vendor NVIDIA")
+        assert result["description"] == "GPU performance testing"
+        assert result["gpu_vendor"] == "NVIDIA"
+
+    def test_filter_missing_value_raises(self):
+        """Test that filter keyword without value raises ValueError"""
+        with pytest.raises(ValueError, match="'gpu-vendor' requires a value"):
+            parse_schedule_ssm_args('2 description "Test" gpu-vendor')
+
+    def test_filter_missing_value_model(self):
+        """Test that model keyword without value raises ValueError"""
+        with pytest.raises(ValueError, match="'model' requires a value"):
+            parse_schedule_ssm_args('2 description "Test" model')
+
+    def test_filter_missing_value_disk_type(self):
+        """Test that disk-type keyword without value raises ValueError"""
+        with pytest.raises(ValueError, match="'disk-type' requires a value"):
+            parse_schedule_ssm_args('2 description "Test" disk-type')
+
 
 class TestParseScheduleAdminArgs:
     """Test parse_schedule_admin_args function"""
@@ -184,6 +285,16 @@ class TestParseScheduleAdminArgs:
         """Test host-list without file path in admin mode"""
         with pytest.raises(ValueError, match="host-list requires a file path"):
             parse_schedule_admin_args("cloud02 host-list 2026-05-11 2026-06-11")
+
+    def test_os_option_admin(self):
+        """Test os option in admin mode"""
+        result = parse_schedule_admin_args('cloud02 host01 2026-05-11 2026-06-11 description "Test" os "RHEL 9.4"')
+        assert result["os"] == "RHEL 9.4"
+
+    def test_os_default_none_admin(self):
+        """Test that os defaults to None in admin mode"""
+        result = parse_schedule_admin_args("cloud02 host01 2026-05-11 2026-06-11")
+        assert result["os"] is None
 
 
 class TestParseExtendArgs:
@@ -235,3 +346,75 @@ class TestParseExtendArgs:
         """Test error when date value is missing"""
         with pytest.raises(ValueError, match="(date requires a value|Usage:)"):
             parse_extend_args("cloud02 date")
+
+
+class TestParseShrinkArgs:
+    def test_shrink_by_weeks(self):
+        result = parse_shrink_args("cloud02 weeks 2")
+        assert result["target"] == "cloud02"
+        assert result["mode"] == "weeks"
+        assert result["weeks"] == 2
+        assert result["days"] is None
+        assert result["date"] is None
+
+    def test_shrink_by_days(self):
+        result = parse_shrink_args("cloud02 days 5")
+        assert result["target"] == "cloud02"
+        assert result["mode"] == "days"
+        assert result["days"] == 5
+        assert result["weeks"] is None
+
+    def test_shrink_now(self):
+        result = parse_shrink_args("cloud23 now")
+        assert result["target"] == "cloud23"
+        assert result["mode"] == "now"
+        assert result["weeks"] is None
+        assert result["days"] is None
+        assert result["date"] is None
+
+    def test_shrink_by_date(self):
+        result = parse_shrink_args('cloud02 date "2026-05-12 22:00"')
+        assert result["target"] == "cloud02"
+        assert result["mode"] == "date"
+        assert result["date"] == "2026-05-12 22:00"
+
+    def test_shrink_date_unquoted(self):
+        result = parse_shrink_args("cloud02 date 2026-05-12 22:00")
+        assert result["date"] == "2026-05-12 22:00"
+
+    def test_shrink_hostname(self):
+        result = parse_shrink_args("host01.example.com weeks 1")
+        assert result["target"] == "host01.example.com"
+        assert result["weeks"] == 1
+
+    def test_too_few_args(self):
+        with pytest.raises(ValueError, match="Usage:"):
+            parse_shrink_args("cloud02")
+
+    def test_weeks_missing_number(self):
+        with pytest.raises(ValueError, match="weeks requires a number"):
+            parse_shrink_args("cloud02 weeks")
+
+    def test_days_missing_number(self):
+        with pytest.raises(ValueError, match="days requires a number"):
+            parse_shrink_args("cloud02 days")
+
+    def test_invalid_weeks_value(self):
+        with pytest.raises(ValueError, match="weeks requires a number"):
+            parse_shrink_args("cloud02 weeks abc")
+
+    def test_invalid_days_value(self):
+        with pytest.raises(ValueError, match="days requires a number"):
+            parse_shrink_args("cloud02 days abc")
+
+    def test_invalid_mode(self):
+        with pytest.raises(ValueError, match="Second argument must be"):
+            parse_shrink_args("cloud02 invalid 5")
+
+    def test_now_with_extra_args(self):
+        with pytest.raises(ValueError, match="'now' takes no additional arguments"):
+            parse_shrink_args("cloud02 now extra")
+
+    def test_date_missing_value(self):
+        with pytest.raises(ValueError, match="(date requires a value|Usage:)"):
+            parse_shrink_args("cloud02 date")

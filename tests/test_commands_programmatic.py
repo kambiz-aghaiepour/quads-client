@@ -398,12 +398,13 @@ class TestGuiShellMetadataCache:
 
         gui_shell.get_available_models()
         gui_shell._models_cache_time = time.monotonic() - gui_shell._metadata_cache_ttl - 1
+        gui_shell._hosts_cache_time = time.monotonic() - gui_shell._metadata_cache_ttl - 1
         gui_shell.get_available_models()
 
         assert gui_shell.connection.api.get_hosts.call_count == 2
 
     def test_invalidate_metadata_cache_clears(self, gui_shell):
-        """invalidate_metadata_cache clears both caches"""
+        """invalidate_metadata_cache clears all caches"""
         gui_shell.connection.api.get_hosts.return_value = [{"model": "1029P", "name": "host1"}]
 
         gui_shell.get_available_models()
@@ -412,6 +413,7 @@ class TestGuiShellMetadataCache:
 
         assert gui_shell._models_cache is None
         assert gui_shell._nic_vendors_cache is None
+        assert gui_shell._hosts_cache is None
 
         gui_shell.get_available_models()
-        assert gui_shell.connection.api.get_hosts.call_count == 3
+        assert gui_shell.connection.api.get_hosts.call_count == 2

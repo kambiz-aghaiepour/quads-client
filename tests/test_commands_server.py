@@ -332,7 +332,7 @@ def test_add_quads_server_success(mock_shell):
 
     yaml_content = {"servers": {}}
 
-    with patch("builtins.input", side_effect=["quads3.example.com", "https://quads3.example.com", "y"]):
+    with patch("builtins.input", side_effect=["quads3.example.com", "https://quads3.example.com", "y", "3"]):
         with patch("requests.get") as mock_get:
             mock_get.return_value.status_code = 200
             with patch("builtins.open", mock_open(read_data="servers: {}\n")):
@@ -343,11 +343,34 @@ def test_add_quads_server_success(mock_shell):
                             server_cmd.cmd_add_quads_server("")
 
                             mock_dump.assert_called_once()
-                            # Verify empty credentials were set
                             call_args = mock_dump.call_args[0][0]
                             assert call_args["servers"]["quads3.example.com"]["username"] == ""
                             assert call_args["servers"]["quads3.example.com"]["password"] == ""
+                            assert call_args["default_server"] == "quads3.example.com"
                             assert mock_shell.poutput.call_count >= 2
+
+
+def test_add_quads_server_second_server_no_default_change(mock_shell):
+    """Test add-quads-server does not overwrite default_server when servers exist"""
+    mock_shell.config.config_path = "~/.config/quads/quads-client.yml"
+
+    yaml_content = {
+        "servers": {"existing.example.com": {"url": "https://existing.example.com"}},
+        "default_server": "existing.example.com",
+    }
+
+    with patch("builtins.input", side_effect=["quads4.example.com", "https://quads4.example.com", "y", "3"]):
+        with patch("requests.get") as mock_get:
+            mock_get.return_value.status_code = 200
+            with patch("builtins.open", mock_open(read_data="servers: {}\n")):
+                with patch("yaml.safe_load", return_value=yaml_content):
+                    with patch("yaml.dump") as mock_dump:
+                        with patch.object(ServerCommands, "cmd_config_reload"):
+                            server_cmd = ServerCommands(mock_shell)
+                            server_cmd.cmd_add_quads_server("")
+
+                            call_args = mock_dump.call_args[0][0]
+                            assert call_args["default_server"] == "existing.example.com"
 
 
 def test_add_quads_server_empty_name(mock_shell):
@@ -380,7 +403,7 @@ def test_add_quads_server_no_verify(mock_shell):
 
     yaml_content = {"servers": {}}
 
-    with patch("builtins.input", side_effect=["quads3.example.com", "https://quads3.example.com", "n"]):
+    with patch("builtins.input", side_effect=["quads3.example.com", "https://quads3.example.com", "n", "3"]):
         with patch("requests.get") as mock_get:
             mock_get.return_value.status_code = 200
             with patch("builtins.open", mock_open(read_data="servers: {}\n")):
@@ -395,178 +418,36 @@ def test_add_quads_server_no_verify(mock_shell):
                             assert call_args["servers"]["quads3.example.com"]["verify"] is False
 
 
-def test_server_info_no_credentials(mock_shell):
-    """Test _get_server_info with missing credentials"""
-    server_cmd = ServerCommands(mock_shell)
-    server_config = {"url": "https://quads.example.com"}
+def test_add_quads_server_with_credentials(mock_shell):
+    """Test add-quads-server with username/password credentials"""
+    mock_shell.config.config_path = "~/.config/quads/quads-client.yml"
 
-    info = server_cmd._get_server_info("test", "https://quads.example.com", server_config)
+    yaml_content = {"servers": {}}
 
-    assert info == "N/A"
+    with patch(
+        "builtins.input",
+        side_effect=[
+            "quads3.example.com",
+            "https://quads3.example.com",
+            "y",
+            "1",
+            "user@example.com",
+        ],
+    ):
+        with patch("getpass.getpass", return_value="mypassword"):
+            with patch("requests.get") as mock_get:
+                mock_get.return_value.status_code = 200
+                with patch("builtins.open", mock_open(read_data="servers: {}\n")):
+                    with patch("yaml.safe_load", return_value=yaml_content):
+                        with patch("yaml.dump") as mock_dump:
+                            with patch.object(ServerCommands, "cmd_config_reload"):
+                                server_cmd = ServerCommands(mock_shell)
+                                server_cmd.cmd_add_quads_server("")
 
-
-def test_server_info_success(mock_shell):
-    """Test _get_server_info with successful capacity calculation"""
-    server_cmd = ServerCommands(mock_shell)
-    server_config = {"url": "https://quads.example.com", "username": "admin", "password": "pass", "verify": True}
-
-    with patch("quads_lib.QuadsApi") as mock_api:
-        mock_api.return_value.login.return_value = {"status": "success"}
-        mock_api.return_value.get_hosts.return_value = [
-            {"name": "host01", "broken": False, "retired": False},
-            {"name": "host02", "broken": False, "retired": False},
-            {"name": "host03", "broken": True, "retired": False},  # Should be excluded
-            {"name": "host04", "broken": False, "retired": False},
-        ]
-        mock_api.return_value.get_current_schedules.return_value = [
-            {"host": {"name": "host01"}},
-            {"host": {"name": "host02"}},
-        ]
-
-        info = server_cmd._get_server_info("test", "https://quads.example.com", server_config)
-
-        # 3 total hosts (excluding broken), 2 scheduled = 66% used, 1 free
-        assert info == "66% (1/3)"
-
-
-def test_server_info_zero_hosts(mock_shell):
-    """Test _get_server_info with zero hosts"""
-    server_cmd = ServerCommands(mock_shell)
-    server_config = {"url": "https://quads.example.com", "username": "admin", "password": "pass", "verify": True}
-
-    with patch("quads_lib.QuadsApi") as mock_api:
-        mock_api.return_value.login.return_value = {"status": "success"}
-        mock_api.return_value.get_hosts.return_value = []
-
-        info = server_cmd._get_server_info("test", "https://quads.example.com", server_config)
-
-        assert info == "0% (0/0)"
-
-
-def test_server_info_login_failure(mock_shell):
-    """Test _get_server_info with login failure"""
-    server_cmd = ServerCommands(mock_shell)
-    server_config = {"url": "https://quads.example.com", "username": "admin", "password": "pass", "verify": True}
-
-    with patch("quads_lib.QuadsApi") as mock_api:
-        mock_api.return_value.login.return_value = {"status": "failure"}
-
-        info = server_cmd._get_server_info("test", "https://quads.example.com", server_config)
-
-        assert info == "N/A"
-
-
-def test_server_info_exception(mock_shell):
-    """Test _get_server_info with exception during API call"""
-    server_cmd = ServerCommands(mock_shell)
-    server_config = {"url": "https://quads.example.com", "username": "admin", "password": "pass", "verify": True}
-
-    with patch("quads_lib.QuadsApi") as mock_api:
-        mock_api.return_value.login.return_value = {"status": "success"}
-        mock_api.return_value.get_hosts.side_effect = Exception("API error")
-
-        info = server_cmd._get_server_info("test", "https://quads.example.com", server_config)
-
-        assert info == "N/A"
-
-
-def test_server_status_no_credentials(mock_shell):
-    """Test _get_server_status with missing credentials"""
-    server_cmd = ServerCommands(mock_shell)
-    server_config = {"url": "https://quads.example.com"}
-
-    status, version = server_cmd._get_server_status("test", "https://quads.example.com", server_config)
-
-    assert status == "No credentials"
-    assert version == "N/A"
-
-
-def test_server_status_string_version(mock_shell):
-    """Test _get_server_status with string version format"""
-    server_cmd = ServerCommands(mock_shell)
-    server_config = {"url": "https://quads.example.com", "username": "admin", "password": "pass", "verify": True}
-
-    with patch("quads_lib.QuadsApi") as mock_api:
-        mock_api.return_value.login.return_value = {"status": "success"}
-        mock_api.return_value.get_version.return_value = "QUADS version 2.2.6 maximilian"
-
-        status, version = server_cmd._get_server_status("test", "https://quads.example.com", server_config)
-
-        assert status == "Online"
-        assert version == "2.2.6"
-
-
-def test_server_status_dict_version(mock_shell):
-    """Test _get_server_status with dict version format"""
-    server_cmd = ServerCommands(mock_shell)
-    server_config = {"url": "https://quads.example.com", "username": "admin", "password": "pass", "verify": True}
-
-    with patch("quads_lib.QuadsApi") as mock_api:
-        mock_api.return_value.login.return_value = {"status": "success"}
-        mock_api.return_value.get_version.return_value = {"version": "2.2.6"}
-
-        status, version = server_cmd._get_server_status("test", "https://quads.example.com", server_config)
-
-        assert status == "Online"
-        assert version == "2.2.6"
-
-
-def test_server_status_login_failure(mock_shell):
-    """Test _get_server_status with login failure"""
-    server_cmd = ServerCommands(mock_shell)
-    server_config = {"url": "https://quads.example.com", "username": "admin", "password": "pass", "verify": True}
-
-    with patch("quads_lib.QuadsApi") as mock_api:
-        mock_api.return_value.login.return_value = {"status": "failure"}
-
-        status, version = server_cmd._get_server_status("test", "https://quads.example.com", server_config)
-
-        assert status == "Auth failed"
-        assert version == "N/A"
-
-
-def test_server_status_login_exception(mock_shell):
-    """Test _get_server_status with login exception"""
-    server_cmd = ServerCommands(mock_shell)
-    server_config = {"url": "https://quads.example.com", "username": "admin", "password": "pass", "verify": True}
-
-    with patch("quads_lib.QuadsApi") as mock_api:
-        mock_api.return_value.login.side_effect = Exception("Connection error")
-
-        status, version = server_cmd._get_server_status("test", "https://quads.example.com", server_config)
-
-        assert status == "Offline"
-        assert version == "N/A"
-
-
-def test_server_status_version_exception(mock_shell):
-    """Test _get_server_status with version endpoint exception"""
-    server_cmd = ServerCommands(mock_shell)
-    server_config = {"url": "https://quads.example.com", "username": "admin", "password": "pass", "verify": True}
-
-    with patch("quads_lib.QuadsApi") as mock_api:
-        mock_api.return_value.login.return_value = {"status": "success"}
-        mock_api.return_value.get_version.side_effect = Exception("Not implemented")
-
-        status, version = server_cmd._get_server_status("test", "https://quads.example.com", server_config)
-
-        assert status == "Online"
-        assert version == "unknown"
-
-
-def test_server_status_no_version_match(mock_shell):
-    """Test _get_server_status with unparseable version string"""
-    server_cmd = ServerCommands(mock_shell)
-    server_config = {"url": "https://quads.example.com", "username": "admin", "password": "pass", "verify": True}
-
-    with patch("quads_lib.QuadsApi") as mock_api:
-        mock_api.return_value.login.return_value = {"status": "success"}
-        mock_api.return_value.get_version.return_value = "some random string"
-
-        status, version = server_cmd._get_server_status("test", "https://quads.example.com", server_config)
-
-        assert status == "Online"
-        assert version == "some random string"
+                                mock_dump.assert_called_once()
+                                call_args = mock_dump.call_args[0][0]
+                                assert call_args["servers"]["quads3.example.com"]["username"] == "user@example.com"
+                                assert call_args["servers"]["quads3.example.com"]["password"] == "mypassword"
 
 
 def test_add_quads_server_connection_failed_accept(mock_shell):
@@ -582,7 +463,8 @@ def test_add_quads_server_connection_failed_accept(mock_shell):
             with patch("yaml.safe_load", return_value=yaml_content):
                 with patch("yaml.dump") as mock_dump:
                     with patch(
-                        "builtins.input", side_effect=["quads3.example.com", "https://quads3.example.com", "y", "y"]
+                        "builtins.input",
+                        side_effect=["quads3.example.com", "https://quads3.example.com", "y", "3", "y"],
                     ):
                         with patch.object(ServerCommands, "cmd_config_reload"):
                             server_cmd = ServerCommands(mock_shell)

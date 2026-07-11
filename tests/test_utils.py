@@ -4,6 +4,7 @@ from quads_client.utils import (
     AVAILABLE_HOSTS_BASE_FILTER,
     extract_assignment_id,
     extract_cloud_name,
+    extract_cloud_number,
     extract_host_field,
     extract_hostname,
     format_schedule_datetime,
@@ -314,6 +315,23 @@ def test_extract_cloud_name_from_object_cloud_is_none():
     assignment = Assignment()
     result = extract_cloud_name(assignment)
     assert result == "N/A"
+
+
+# Tests for extract_cloud_number()
+def test_extract_cloud_number_standard():
+    assert extract_cloud_number("cloud06") == 6
+    assert extract_cloud_number("cloud21") == 21
+    assert extract_cloud_number("cloud01") == 1
+
+
+def test_extract_cloud_number_no_digits():
+    result = extract_cloud_number("nodigits")
+    assert result == float("inf")
+
+
+def test_extract_cloud_number_empty():
+    result = extract_cloud_number("")
+    assert result == float("inf")
 
 
 # Tests for extract_assignment_id()

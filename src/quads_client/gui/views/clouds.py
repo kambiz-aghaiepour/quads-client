@@ -184,7 +184,7 @@ class CloudsView(BaseAdminView):
             return
 
         cloud_name = values[0]
-        dialog = self.create_simple_dialog(f"Modify Cloud: {cloud_name}", "500x400")
+        dialog = self.create_simple_dialog(f"Modify Cloud: {cloud_name}", "500x450")
 
         ttk.Label(
             dialog,
@@ -201,12 +201,20 @@ class CloudsView(BaseAdminView):
         ticket_entry = FormDialog.create_labeled_entry(form_frame, "Ticket ID:", 2, 40)
         cc_entry = FormDialog.create_labeled_entry(form_frame, "CC Users:", 3, 40)
         vlan_entry = FormDialog.create_labeled_entry(form_frame, "VLAN ID:", 4, 40)
+        ttk.Label(form_frame, text="OS:").grid(row=5, column=0, sticky=tk.W, pady=5)
+        available_os = self.shell.get_available_os()
+        os_values = [""] + available_os if available_os else [""]
+        os_combo = ttk.Combobox(form_frame, values=os_values, width=38, state="readonly")
+        os_combo.set("")
+        os_combo.grid(row=5, column=1, pady=5, sticky=tk.W)
 
-        qinq_var = tk.BooleanVar(value=False)
-        ttk.Checkbutton(form_frame, text="Enable QinQ", variable=qinq_var).grid(row=5, column=1, sticky=tk.W, pady=5)
+        ttk.Label(form_frame, text="QinQ:").grid(row=6, column=0, sticky=tk.W, pady=5)
+        qinq_combo = ttk.Combobox(form_frame, values=["", "0", "1"], width=38, state="readonly")
+        qinq_combo.set("")
+        qinq_combo.grid(row=6, column=1, pady=5, sticky=tk.W)
 
         wipe_var = tk.BooleanVar(value=False)
-        ttk.Checkbutton(form_frame, text="Enable wipe", variable=wipe_var).grid(row=6, column=1, sticky=tk.W, pady=5)
+        ttk.Checkbutton(form_frame, text="Enable wipe", variable=wipe_var).grid(row=7, column=1, sticky=tk.W, pady=5)
 
         def on_modify():
             args = cloud_name
@@ -223,8 +231,13 @@ class CloudsView(BaseAdminView):
                 args += f' cc-users "{safe_cc}"'
             if vlan_entry.get().strip():
                 args += f" vlan {vlan_entry.get().strip()}"
-            if qinq_var.get():
-                args += " qinq 1"
+            os_val = os_combo.get()
+            if os_val:
+                safe_os = os_val.replace('"', '\\"')
+                args += f' os "{safe_os}"'
+            qinq_val = qinq_combo.get()
+            if qinq_val:
+                args += f" qinq {qinq_val}"
             if wipe_var.get():
                 args += " wipe"
 

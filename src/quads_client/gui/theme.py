@@ -292,6 +292,7 @@ class ThemeManager:
             foreground=colors["entry_fg"],
             background=colors["panel_bg"],
             bordercolor=colors["border"],
+            arrowcolor=colors["entry_fg"],
         )
 
         self.style.map(
@@ -299,6 +300,12 @@ class ThemeManager:
             fieldbackground=[("readonly", colors["entry_bg"])],
             foreground=[("readonly", colors["entry_fg"])],
         )
+
+        # Combobox dropdown popup listbox (not stylable via ttk.Style)
+        self.root.option_add("*TCombobox*Listbox.background", colors["entry_bg"])
+        self.root.option_add("*TCombobox*Listbox.foreground", colors["entry_fg"])
+        self.root.option_add("*TCombobox*Listbox.selectBackground", colors["accent"])
+        self.root.option_add("*TCombobox*Listbox.selectForeground", "#ffffff")
 
         # Spinbox configuration
         self.style.configure(

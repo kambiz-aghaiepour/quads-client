@@ -44,6 +44,7 @@ class AvailableView(BaseAdminView):
         # Filter frame with reusable HostFilterFrame
         self.filter_frame = HostFilterFrame(self, self.shell, show_dates=True)
         self.filter_frame.pack(fill=tk.X, padx=20, pady=(0, 10))
+        self.filter_frame.populate_metadata_async()
 
         # Button row: Apply + Clear
         button_frame = ttk.Frame(self)

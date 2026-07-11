@@ -129,8 +129,8 @@ class CloudCommands:
                             [
                                 host.get("name", ""),
                                 host.get("model", ""),
-                                sched.get("start", ""),
-                                sched.get("end", ""),
+                                sched.get("start", "").replace("GMT", "UTC"),
+                                sched.get("end", "").replace("GMT", "UTC"),
                             ]
                         )
 
@@ -170,8 +170,8 @@ class CloudCommands:
                             [
                                 host.get("name", ""),
                                 host.get("model", ""),
-                                sched.get("start", ""),
-                                sched.get("end", ""),
+                                sched.get("start", "").replace("GMT", "UTC"),
+                                sched.get("end", "").replace("GMT", "UTC"),
                             ]
                         )
 
@@ -279,12 +279,14 @@ class CloudCommands:
             self.shell.poutput("  cc-users <user1,user2>   Comma-separated CC users")
             self.shell.poutput("  vlan <vlan_id>           VLAN ID number")
             self.shell.poutput("  qinq <0|1>              QinQ setting (0=disabled, 1=enabled)")
+            self.shell.poutput("  os <title>               OS for provisioning (see os-list)")
             self.shell.poutput("  wipe                     Enable host wiping")
             self.shell.poutput("  nowipe                   Disable host wiping")
             self.shell.poutput("\nExamples:")
             self.shell.poutput('  mod-cloud cloud05 description "Updated test environment"')
             self.shell.poutput("  mod-cloud cloud02 cloud-owner alice cloud-ticket 456")
             self.shell.poutput("  mod-cloud cloud03 vlan 1234 qinq 1")
+            self.shell.poutput('  mod-cloud cloud04 os "RHEL 9.4"')
             self.shell.poutput("  mod-cloud cloud04 wipe")
             self.shell.poutput('  mod-cloud cloud06 cc-users "bob,alice,charlie"')
             return
@@ -301,7 +303,7 @@ class CloudCommands:
 
         cloud_name = parts[0]
         updates = {}
-        keywords = ["description", "cloud-owner", "cloud-ticket", "cc-users", "vlan", "qinq", "wipe", "nowipe"]
+        keywords = ["description", "cloud-owner", "cloud-ticket", "cc-users", "vlan", "qinq", "os", "wipe", "nowipe"]
 
         i = 1
         while i < len(parts):
@@ -338,6 +340,9 @@ class CloudCommands:
                 except ValueError:
                     self.shell.perror(f"Invalid QinQ value: {parts[i + 1]}")
                     return
+                i += 2
+            elif parts[i] == "os" and i + 1 < len(parts):
+                updates["ostype"] = parts[i + 1]
                 i += 2
             elif parts[i] == "wipe":
                 updates["wipe"] = True
@@ -571,3 +576,57 @@ class CloudCommands:
                 self.rich_console.print_error(f"Failed to list VLANs: {e}")
             else:
                 self.shell.perror(f"Failed to list VLANs: {e}")
+
+    def cmd_os_list(self, args):
+        """
+        List available operating systems for provisioning.
+        Usage: os-list
+
+        Queries the QUADS server for available OS images that can be used
+        with the schedule command or mod-cloud.
+        """
+        if not self._require_connection():
+            return
+
+        try:
+            os_list = self.shell.connection.api.get_os_list()
+
+            if not os_list:
+                self.shell.poutput("No available operating systems")
+                return
+
+            headers = ["Id", "Title", "Release Name", "Family"]
+
+            if self.rich_console:
+                from rich.table import Table
+
+                table = Table(title="Available Operating Systems")
+                for header in headers:
+                    table.add_column(header, style="cyan" if header == "Title" else "white")
+
+                for os_item in os_list:
+                    table.add_row(
+                        str(os_item.get("Id", "")),
+                        os_item.get("Title", ""),
+                        os_item.get("Release Name", ""),
+                        os_item.get("Family", ""),
+                    )
+
+                self.shell.rich_console.console.print(table)
+            else:
+                table_data = [
+                    [
+                        str(os_item.get("Id", "")),
+                        os_item.get("Title", ""),
+                        os_item.get("Release Name", ""),
+                        os_item.get("Family", ""),
+                    ]
+                    for os_item in os_list
+                ]
+                self.shell.poutput(tabulate(table_data, headers=headers, tablefmt="simple"))
+
+        except Exception as e:
+            if self.rich_console:
+                self.rich_console.print_error(f"Failed to list operating systems: {e}")
+            else:
+                self.shell.perror(f"Failed to list operating systems: {e}")

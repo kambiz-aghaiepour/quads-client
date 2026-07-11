@@ -374,8 +374,20 @@ class AdminScheduleView(BaseAdminView):
         qinq_combo.set("0")
         qinq_combo.grid(row=9, column=1, pady=5, sticky=tk.W)
 
+        # OS dropdown - populate with available OS options
+        ttk.Label(form_frame, text="OS:").grid(row=10, column=0, sticky=tk.W, pady=5)
+        available_os = self.shell.get_available_os()
+        if available_os:
+            os_values = ["Select OS..."] + available_os
+            os_combo = ttk.Combobox(form_frame, values=os_values, width=17, state="readonly")
+            os_combo.set("Select OS...")
+        else:
+            os_combo = ttk.Combobox(form_frame, values=["No OS options available"], width=17, state="readonly")
+            os_combo.set("No OS options available")
+        os_combo.grid(row=10, column=1, pady=5, sticky=tk.W)
+
         nowipe_var = tk.BooleanVar(value=False)
-        ttk.Checkbutton(form_frame, text="No wipe", variable=nowipe_var).grid(row=10, column=1, sticky=tk.W, pady=5)
+        ttk.Checkbutton(form_frame, text="No wipe", variable=nowipe_var).grid(row=11, column=1, sticky=tk.W, pady=5)
 
         def on_create():
             cloud = cloud_var.get().strip()
@@ -456,6 +468,11 @@ class AdminScheduleView(BaseAdminView):
                 args += f" vlan {vlan}"
             if qinq_combo.get():
                 args += f" qinq {qinq_combo.get()}"
+            # Only add OS if a valid one is selected
+            os_val = os_combo.get()
+            if os_val and os_val != "Select OS..." and os_val != "No OS options available":
+                safe_os = os_val.replace('"', '\\"')
+                args += f' os "{safe_os}"'
             if nowipe_var.get():
                 args += " nowipe"
 

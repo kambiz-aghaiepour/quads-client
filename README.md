@@ -16,14 +16,14 @@ QUADS Client provides both a powerful CLI and an intuitive GUI for managing mult
   - **Full-Featured Multi-Platform GUI**: Modern graphical interface for Linux/macOS with onboarding wizard, dark/light themes, and visual host management
 - **Multi-Server Support**: Connect to and manage multiple QUADS servers from a single interface
 - **Session Management**: Maintain multiple authenticated connections simultaneously and switch between them instantly
-- **Bearer Token Authentication**: Secure JWT-based authentication via python-quads-lib
+- **SSO API Token & JWT Authentication**: Supports `qat_`-prefixed SSO tokens (preferred) and legacy username/password via python-quads-lib
 - **Interactive Shell**: Built on cmd2 with command history and comprehensive tab completion
 - **Intelligent Tab Completion**: Context-aware autocompletion for all commands, arguments, cloud names, hostnames, assignment IDs, and server names
 - **Rich UI**: Beautiful terminal output with colors, tables, and status indicators powered by python-rich
 - **User Registration**: Non-admin users can register accounts and manage their own assignments
 - **Command History**: SQLite-based persistent command history per server
 - **Unified Schedule Command**: Combines cloud assignment creation and host scheduling in a single operation for simpler workflows
-- **Progress Tracking**: Real-time provisioning progress monitoring
+- **Move Progress Tracking**: Monitor host moves through the 12-stage provisioning pipeline via `move_status`, live `track` with Rich auto-refresh, `activity` cloud-grouped summaries, and GUI Move Progress view
 - **Connection Management**: Easy switching between QUADS server instances
 - **Thin Wrapper Design**: Server-side authorization via QUADS API
 
@@ -35,12 +35,16 @@ QUADS Client provides both a powerful CLI and an intuitive GUI for managing mult
   - [From RPM](#from-rpm)
   - [From Source](#from-source)
 - [Configuration](#configuration)
+  - [Quick Setup (Recommended)](#quick-setup-recommended)
+  - [Manual Configuration (Advanced)](#manual-configuration-advanced)
+  - [SSL/TLS Security Indicator](#ssltls-security-indicator)
 - [How to Self-Schedule](#how-to-self-schedule)
 - [Usage](#usage)
   - [GUI Mode](#gui-mode)
   - [Interactive Mode](#interactive-mode)
   - [One-Shot Commands](#one-shot-commands)
 - [Commands](#commands)
+  - [Tab Completion](#tab-completion)
   - [Connection Management](#connection-management)
   - [Multi-Server Session Management](#multi-server-session-management)
   - [Managing Multiple Users on Same Server](#managing-multiple-users-on-same-server)
@@ -50,6 +54,7 @@ QUADS Client provides both a powerful CLI and an intuitive GUI for managing mult
   - [Host Management (Admin)](#host-management-admin)
   - [Schedule Management (Admin)](#schedule-management-admin)
   - [Available Hosts](#available-hosts)
+  - [Move Progress](#move-progress)
   - [Other Commands](#other-commands)
 - [Authorization](#authorization)
   - [Server Roles](#server-roles)
@@ -67,6 +72,7 @@ QUADS Client provides both a powerful CLI and an intuitive GUI for managing mult
 - [Contributing](#contributing)
 - [Screenshots](#screenshots)
   - [TUI CLI](#tui-cli)
+  - [Active Provisioning Tracking](#active-provisioning-tracking)
   - [GUI](#gui)
 - [Links](#links)
 
@@ -170,26 +176,55 @@ pip install -e .
 ### Quick Setup (Recommended)
 
 > [!TIP]
-> The `add-quads-server` command creates the configuration file interactively. This is the easiest way to get started.
+> The `add_quads_server` command creates the configuration file interactively. This is the easiest way to get started.
 
-Use the interactive `add-quads-server` command:
+**1. Launch the client and add your server:**
 
-```bash
-quads-client
-add-quads-server
-# Follow the prompts to add your QUADS server
-config-reload
-connect <server_name>
-register your.email@example.com YourPassword123
 ```
+$ quads-client
+(disconnected) > add_quads_server
+
+=== Add New QUADS Server ===
+
+Enter a friendly name for this server (e.g., my-quads, scalelab): quads_prod
+Enter server URL (e.g., https://quads1.example.com): https://quads.example.com
+Enable SSL certificate verification? [Y/n]: Y
+
+Authentication method:
+  1) Username & Password
+  2) SSO Token
+  3) None (register later)
+Choice [1/2/3]: 2
+Email: user@example.com
+SSO Token: <paste your token>
+
+Testing connection to https://quads.example.com...
+Server is reachable
+Server 'quads_prod' added successfully!
+```
+
+**2. Connect and start working:**
+
+```
+(disconnected) > connect quads_prod
+OK: Connected to quads_prod as user@example.com (session 1)
+✓ (quads_prod) > ls_available
+✓ (quads_prod) > my_assignments
+```
+
+> [!NOTE]
+> If you chose "None (register later)" during setup, authenticate after connecting:
+> - SSO token (preferred): `token-login`
+> - New account: `register your.email@example.com YourPassword123`
 
 ### Manual Configuration (Advanced)
 
 Alternatively, manually create the configuration file using the provided [example configuration](conf/quads-client.yml.example) as a template.
 
 **Configuration Notes**:
-- For new users: Leave `username` and `password` blank. Use the `register` command after connecting.
-- For existing users: Fill in credentials to login automatically on connect.
+- **SSO token auth (preferred)**: Set `api_token` to your `qat_`-prefixed token from the QUADS web portal (Profile > API Tokens). No password needed.
+- **Legacy password auth**: Set `username` and `password`. Use the `register` command after connecting if you don't have an account yet.
+- When `api_token` is set, it takes precedence over username/password.
 - Specify the base URL only (no `/api/v3/` path, no port `:5000`). The client automatically appends the API path.
 - `verify: true` enables SSL certificate verification (recommended). Set to `false` only for development/testing with self-signed certificates.
 
@@ -231,6 +266,7 @@ quads-client-gui
 - Server/connection management with session switching
 - Self-scheduling interface for normal users
 - My Hosts view with status monitoring
+- Move Progress view with auto-refresh for active moves
 - Dark/light theme toggle
 - Cross-platform (Linux, macOS, Windows)
 
@@ -354,9 +390,9 @@ quads-client extend host01.example.com weeks 1
 quads-client shrink host01.example.com weeks 2
 
 # Cloud utilities
-quads-client find-free-cloud
-quads-client cloud-only cloud05
-quads-client ls-vlan
+quads-client find_free_cloud
+quads-client cloud_only cloud05
+quads-client ls_vlan
 ```
 
 **Exit Codes:**
@@ -382,9 +418,28 @@ else
 fi
 ```
 
+**Piped Commands:**
+
+Commands can also be piped via stdin. Empty lines and `#` comments are skipped:
+
+```bash
+# Single command
+echo 'version' | quads-client
+
+# Multiple commands
+echo -e 'cloud_list\nmy_hosts' | quads-client
+
+# From a script file
+cat <<'EOF' | quads-client
+# Check assignments
+my_assignments
+my_hosts
+EOF
+```
+
 **Tips:**
 - Set `default_server` in your config to enable auto-connect
-- One-shot commands suppress banner and connection messages for clean output
+- One-shot and piped commands suppress banner and connection messages for clean output
 - Use `> /dev/null 2>&1` to suppress all output in scripts
 - Commands use underscores (e.g., `cloud_list`, `my_hosts`)
 - All table output goes to stdout for easy parsing
@@ -394,9 +449,14 @@ fi
 Quick start for regular users:
 
 ```bash
-# 1. Connect and register
+# 1. Connect and authenticate
 quads-client
 connect quads-prod.example.com
+
+# Option A: SSO token (preferred)
+token-login
+
+# Option B: Register new account (legacy)
 register your.email@example.com YourPassword123
 
 # 2. Schedule hosts (automatic for 5 days or until Sunday 21:00 UTC)
@@ -405,8 +465,8 @@ schedule host01,host02 description "CI testing"
 schedule host-list hosts.txt description "Perf lab"
 
 # 3. Check your hosts
-my-hosts
-my-assignments
+my_hosts
+my_assignments
 
 # 4. Release when done
 terminate 42                    # Terminate entire assignment
@@ -424,16 +484,16 @@ QUADS Client provides comprehensive tab completion for all commands and their ar
 **Command Completion**: Press `Tab` after typing partial command names
 ```
 (quads1-dev) > clo<Tab>
-cloud-list  cloud-only
+cloud_list  cloud_only
 ```
 
 **Context-Aware Argument Completion**: Press `Tab` to complete command arguments based on live server data
 
-- **Cloud names**: `mod-cloud <Tab>` → shows available clouds
-- **Hostnames**: `mark-broken <Tab>` → shows non-broken hosts
+- **Cloud names**: `mod_cloud <Tab>` → shows available clouds
+- **Hostnames**: `mark_broken <Tab>` → shows non-broken hosts
 - **Assignment IDs**: `terminate <Tab>` → shows your active assignment IDs
 - **Server names**: `connect <Tab>` → shows configured servers
-- **Keywords**: `schedule <Tab>` → shows options like `description`, `nowipe`, `vlan`, `qinq`, `model`, `ram`
+- **Keywords**: `schedule <Tab>` → shows options like `description`, `nowipe`, `vlan`, `qinq`, `model`, `ram`, `disk-type`, `gpu-vendor`, `nic-vendor`, etc.
 
 **Examples**:
 ```
@@ -449,7 +509,7 @@ description  nowipe  vlan  qinq  model  ram  host-list
 cloud01  cloud02  cloud03
 
 # Cloud operations
-(quads1-dev) > cloud-list cloud <Tab>
+(quads1-dev) > cloud_list cloud <Tab>
 cloud01  cloud02  cloud03
 
 # Terminate command
@@ -457,7 +517,7 @@ cloud01  cloud02  cloud03
 42  43  44
 
 # Host management
-(quads1-dev) > mark-broken <Tab>
+(quads1-dev) > mark_broken <Tab>
 host01.example.com  host02.example.com  host03.example.com
 ```
 
@@ -511,17 +571,17 @@ QUADS Client allows you to maintain multiple authenticated connections simultane
 
 **Session Commands:**
 ```
-session-create quads-prod label prod      - Create new session with optional label
+session_create quads-prod label prod      - Create new session with optional label
 session prod                              - Quick switch to session by ID or label
-session-switch                            - Toggle to previous session (like screen Ctrl+A Ctrl+A)
-session-switch 2                          - Switch to specific session by ID
-session-list                              - Show all active sessions with status
-session-close 2                           - Close specific session
-session-close-all                         - Close all inactive sessions
+session_switch                            - Toggle to previous session (Ctrl+A Ctrl+A)
+session_switch 2                          - Switch to specific session by ID
+session_list                              - Show all active sessions with status
+session_close 2                           - Close specific session
+session_close_all                         - Close all inactive sessions
 ```
 
 > [!TIP]
-> **Quick Toggle**: Use `session-switch` (or just `session`) with no arguments to toggle between your last two sessions, similar to GNU screen's `Ctrl+A Ctrl+A` behavior. Perfect for bouncing between two environments!
+> **Quick Toggle**: Press `Ctrl+A Ctrl+A` (double-tap) to instantly toggle between your last two sessions, just like GNU screen. This works anywhere at the prompt — no command needed. You can also type `session_switch` or `session` with no arguments for the same effect.
 
 **Quick Start Example:**
 ```bash
@@ -538,7 +598,7 @@ OK: Connected to quads-dev.example.com as user@example.com (session 2)
 # Quick switch between environments
 > session prod
 Switched to session 1 (prod)
-✓ [1:prod* 2:dev] (quads-prod) > cloud-list
+✓ [1:prod* 2:dev] (quads-prod) > cloud_list
 [shows production clouds]
 
 > session dev
@@ -546,7 +606,7 @@ Switched to session 1 (dev)
 ✓ [1:prod 2:dev*] (quads-dev) >
 
 # View all sessions
-> session-list
+> session_list
 ┏━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━┳━━━━━━━━━┳━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━┓
 ┃ Session  ┃ Server                   ┃ Label   ┃ Version ┃ Status       ┃ Last Active  ┃
 ┡━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━╇━━━━━━━━━╇━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━┩
@@ -572,10 +632,10 @@ Compare environments:
 > connect quads-prod session prod
 > connect quads-dev session dev
 > session prod
-> cloud-list cloud cloud05 detail  # Check prod state
-> session-switch  # Toggle back to dev
-> cloud-list cloud cloud05 detail  # Compare with dev
-> session-switch  # Toggle back to prod
+> cloud_list cloud cloud05 detail  # Check prod state
+> session_switch  # Toggle back to dev (or Ctrl+A Ctrl+A)
+> cloud_list cloud cloud05 detail  # Compare with dev
+> session_switch  # Toggle back to prod (or Ctrl+A Ctrl+A)
 ```
 
 Work in dev, monitor prod:
@@ -584,16 +644,16 @@ Work in dev, monitor prod:
 > connect quads-prod session prod
 > session dev
 > schedule 3 description "Testing new feature"
-> session-switch  # Quick toggle to production
-> my-hosts      # Verify prod assignments
-> session-switch  # Toggle back to development work
+> session_switch  # Quick toggle to production
+> my_hosts      # Verify prod assignments
+> session_switch  # Toggle back to development work
 ```
 
 **Tips:**
 - Sessions remain authenticated even when inactive
-- Use `session-close-all` to clean up when switching projects
+- Use `session_close_all` to clean up when switching projects
 - The `status` command shows all sessions when you have multiple connections
-- Configuration changes with `config-reload` update all active sessions
+- Configuration changes with `config_reload` update all active sessions
 
 ### Managing Multiple Users on Same Server
 
@@ -609,18 +669,18 @@ The same server URL can be added multiple times with different names and credent
 
 ```bash
 # Add admin user account
-> add-quads-server
+> add_quads_server
 Enter server name: admin-quads2-dev
 Enter server URL: https://quads2-dev.rdu2.scalelab.example.com
 Enable SSL verification? [Y/n]: Y
 
 # Add regular user account  
-> add-quads-server
+> add_quads_server
 Enter server name: quads2-dev
 Enter server URL: https://quads2-dev.rdu2.scalelab.example.com  # Same URL!
 Enable SSL verification? [Y/n]: Y
 
-> config-reload
+> config_reload
 ```
 
 **Configuration Result:**
@@ -631,12 +691,14 @@ servers:
     url: https://quads2-dev.rdu2.scalelab.example.com
     username: admin+wfoster@example.com
     password: ""
+    api_token: ""
     verify: true
     
   quads2-dev:
     url: https://quads2-dev.rdu2.scalelab.example.com  # Same server!
     username: wfoster@example.com
     password: ""
+    api_token: "qat_your_token_here"
     verify: true
 ```
 
@@ -655,7 +717,7 @@ OK: Connected to quads2-dev as wfoster@example.com (session 2)
 ✓ [1:admin 2:user*] (quads2-dev) >
 
 # Toggle between admin and user sessions
-> session-switch
+> session_switch
 Switched to session 1 (admin)
 ✓ [1:admin* 2:user] (quads2-dev) [ADMIN] >
 
@@ -663,7 +725,7 @@ Switched to session 1 (admin)
 > extend cloud05 weeks 2
 
 # Back to user session
-> session-switch
+> session_switch
 Switched to session 2 (user)
 ✓ [1:admin 2:user*] (quads2-dev) >
 
@@ -674,7 +736,7 @@ Switched to session 2 (user)
 **Benefits:**
 
 - **Role Separation**: Keep admin and user workflows clearly separated
-- **Quick Switching**: Toggle between accounts with `session-switch`
+- **Quick Switching**: Toggle between accounts with `session_switch`
 - **Visual Indicators**: Prompt shows `[ADMIN]` badge for admin sessions
 - **Command Visibility**: Admin commands only visible in admin sessions
 - **Credential Security**: Each account's credentials stored separately
@@ -693,77 +755,93 @@ Switched to session 2 (user)
 
 ```
 servers              - List all configured servers with status
-add-quads-server     - Interactive wizard to add a new QUADS server
-add-server quads3 https://quads3.example.com user@example.com password123 [noverify]  
+add_quads_server     - Interactive wizard to add a new QUADS server
+add_server quads3 https://quads3.example.com user@example.com password123 [noverify]  
                      - Add new server to configuration (advanced)
-edit-server quads3 [url https://new.example.com] [username newuser@example.com] 
-                   [password newpass] [verify true|false]
+edit_server quads3 [url https://new.example.com] [username newuser@example.com] 
+                   [password newpass] [token qat_...] [verify true|false]
                      - Edit existing server configuration
-rm-server quads3     - Remove server from configuration
-config-reload        - Reload configuration from file
+rm_server quads3     - Remove server from configuration
+config_reload        - Reload configuration from file
 ```
 
 **Adding a server (interactive method)**:
 ```bash
-add-quads-server
+add_quads_server
 # Follow the prompts:
 #   1. Enter server name (e.g., quads1.example.com)
 #   2. Enter server URL (e.g., https://quads1.example.com)
 #   3. Enable SSL verification? [Y/n]
-# Then: config-reload, connect, and register
+#   4. Authentication method:
+#      1) Username & Password
+#      2) SSO Token (preferred - from QUADS web portal Profile > API Tokens)
+#      3) None (register later)
 ```
 
 ### Cloud Management
 
 ```
-cloud-list                                         - List all clouds
-cloud-list cloud cloud05 detail                    - Show detailed cloud info with hosts
-mod-cloud <cloud_name> [OPTIONS]                   - Modify cloud attributes (admin only)
+cloud_list                                         - List all clouds
+cloud_list cloud cloud05 detail                    - Show detailed cloud info with hosts
+mod_cloud <cloud_name> [OPTIONS]                   - Modify cloud attributes (admin only)
   cloud-owner <username>                           - Set cloud owner
   description <text>                               - Set cloud description
   cloud-ticket <ticket_id>                         - Set ticket ID
   cc-users <user1,user2>                           - Comma-separated CC users
   vlan <vlan_id>                                   - VLAN ID number
   qinq <0|1>                                       - QinQ setting
+  os <title>                                       - OS for provisioning (see os_list)
   wipe                                             - Enable host wiping
   nowipe                                           - Disable host wiping
-find-free-cloud                                    - List clouds without active assignments
-cloud-only <cloud_name>                            - List all hosts assigned to a specific cloud
-ls-vlan                                            - List VLANs with assigned clouds
+find_free_cloud                                    - List clouds without active assignments
+cloud_only <cloud_name>                            - List all hosts assigned to a specific cloud
+ls_vlan                                            - List VLANs with assigned clouds
+os_list                                            - List available operating systems
 ```
 
 **Examples:**
 ```bash
 # Modify cloud assignment properties
-mod-cloud cloud05 description "Updated test environment"
-mod-cloud cloud02 cloud-owner alice cloud-ticket JIRA-456
-mod-cloud cloud17 cc-users bob@example.com,charlie@example.com wipe
+mod_cloud cloud05 description "Updated test environment"
+mod_cloud cloud02 cloud-owner alice cloud-ticket JIRA-456
+mod_cloud cloud17 cc-users bob@example.com,charlie@example.com wipe
+mod_cloud cloud04 os "RHEL 9.4"
 
 # Find available clouds and check assignments
-find-free-cloud
-cloud-only cloud05
+find_free_cloud
+cloud_only cloud05
 ```
 
 > [!NOTE]
-> The `cloud-create` and `cloud-delete` commands have been removed for safety. Use the unified `schedule` command which automatically creates assignments and manages cloud lifecycle.
+> The `cloud_create` and `cloud_delete` commands have been removed for safety. Use the unified `schedule` command which automatically creates assignments and manages cloud lifecycle.
 
 ### Self-Scheduling Mode (SSM)
 
 Self-Scheduling Mode allows regular (non-admin) users to schedule hosts without admin intervention. The QUADS server automatically creates assignments and clouds - **no tickets required**.
 
 ```
-register <email> <password>                      - Register a new user
-login                                            - Explicit login
+token-login                                      - Login with an SSO API token (preferred)
+register <email> <password>                      - Register a new user (legacy)
+login                                            - Explicit login (legacy password auth)
 whoami                                           - Show current user information
 schedule <count|hostname[,hostname...]|host-list path> description <desc> [OPTIONS]
                                                  - Schedule hosts (SSM mode)
   nowipe                                         - Disable wipe (default: wipe enabled)
   vlan <id>                                      - VLAN ID
   qinq <0|1>                                     - QinQ mode
+  os <title>                                     - OS for provisioning (see os_list)
   model <model>                                  - Filter by model (count mode only)
   ram <GB>                                       - Minimum RAM in GB (count mode only)
-my-assignments                                   - List all your assignments
-my-hosts                                         - Show your currently scheduled hosts
+  disk-type <TYPE>                               - Disk type: nvme, ssd, sata (count mode only)
+  disk-size <GB>                                 - Minimum disk size in GB (count mode only)
+  disk-count <N>                                 - Minimum number of disks (count mode only)
+  gpu-vendor <VENDOR>                            - GPU vendor, e.g. "NVIDIA Corporation" (count mode only)
+  gpu-product <PRODUCT>                          - GPU model, e.g. "Tesla V100" (count mode only)
+  interfaces <N>                                 - Minimum network interfaces (count mode only)
+  nic-vendor <VENDOR>                            - NIC vendor, e.g. "Mellanox" (count mode only)
+  nic-speed <GBPS>                               - Minimum NIC speed in Gbps (count mode only)
+my_assignments                                   - List all your assignments
+my_hosts                                         - Show your currently scheduled hosts
 available                                        - Show available hosts for self-scheduling
 terminate <assignment-id> [hostname]             - Terminate assignment or release host
 ```
@@ -773,7 +851,9 @@ terminate <assignment-id> [hostname]             - Terminate assignment or relea
 ```bash
 # MODE 1: Count - just specify a NUMBER (QUADS picks hosts for you)
 schedule 3 description "Dev testing"
-schedule 5 description "Perf lab" model r640 ram 128  # With filters
+schedule 5 description "Perf lab" model r640 ram 128       # With filters
+schedule 3 description "GPU work" gpu-vendor "NVIDIA Corporation"  # GPU filter
+schedule 4 description "NVMe test" disk-type nvme nic-speed 25     # Disk + NIC
 
 # MODE 2: Specific hosts - comma-separated hostnames (NO SPACES!)
 schedule host01.example.com,host02.example.com description "CI pipeline"
@@ -781,12 +861,36 @@ schedule host01.example.com,host02.example.com description "CI pipeline"
 # MODE 3: Host list file - one hostname per line
 schedule host-list ~/hosts.txt description "Batch test" vlan 1150 nowipe
 
+# With OS selection (see available options with os_list)
+schedule 3 description "RHEL 9 testing" os "RHEL 9.4"
+
 # View and manage assignments
-my-assignments
-my-hosts
+my_assignments
+my_hosts
 terminate 42
 terminate 42 host03.example.com
 ```
+
+**Advanced Hardware Filtering:**
+
+All hardware metadata filters are available directly in count mode. QUADS selects only hosts matching your criteria:
+
+```bash
+# Count mode with hardware filters (QUADS picks matching hosts)
+schedule 3 description "NVMe perf" disk-type nvme disk-size 500 nic-speed 25
+schedule 2 description "ML training" gpu-vendor "NVIDIA Corporation" ram 256
+schedule 4 description "High-NIC" interfaces 4 nic-vendor Mellanox
+```
+
+You can also use `ls-available` to discover hosts first, then schedule specific ones by name:
+
+```bash
+# Discover, then schedule by name
+ls-available gpu-vendor "NVIDIA Corporation" ram 256
+schedule host03.example.com,host04.example.com description "ML training"
+```
+
+See [Available Hosts](#available-hosts) for the full list of supported hardware filters.
 
 **Common Mistakes:**
 ```bash
@@ -806,13 +910,13 @@ schedule 3 description "test"
 ### Host Management (Admin)
 
 ```
-ls-hosts                         - List all hosts
-mark-broken host01.example.com   - Mark a host as broken
-mark-repaired host01.example.com - Mark a broken host as repaired
+ls_hosts                         - List all hosts
+mark_broken host01.example.com   - Mark a host as broken
+mark_repaired host01.example.com - Mark a broken host as repaired
 retire host01.example.com        - Mark a host as retired
 unretire host01.example.com      - Mark a retired host as active
-ls-broken                        - List all broken hosts
-ls-retired                       - List all retired hosts
+ls_broken                        - List all broken hosts
+ls_retired                       - List all retired hosts
 ```
 
 ### Schedule Management (Admin)
@@ -839,15 +943,18 @@ Options:
   cc-users <user1,user2>             - Comma-separated CC users
   vlan <vlan_id>                     - VLAN ID number
   qinq <0|1>                         - QinQ setting (default 0)
+  os <title>                         - OS for provisioning (see os_list)
   nowipe                             - Don't wipe hosts (default: wipe=true)
 
 Other Schedule Commands:
-  ls-schedule [host <hostname>] [cloud <cloud>]             - List schedules
-  mod-schedule id <id> [start <date>] [end <date>]          - Modify schedule dates
-  rm-schedule <schedule_id>                                 - Remove a schedule
+  ls_schedule [host <hostname>] [cloud <cloud>]             - List schedules
+  mod_schedule id <id> [start <date>] [end <date>]          - Modify schedule dates
   extend <cloud|hostname> weeks <N>                         - Extend by weeks
   extend <cloud|hostname> date "YYYY-MM-DD HH:MM"           - Extend to specific date
-  shrink <hostname> weeks <N>                               - Shrink schedule by weeks
+  shrink <cloud|hostname> weeks <N>                         - Shrink schedule by weeks
+  shrink <cloud|hostname> days <N>                          - Shrink schedule by days
+  shrink <cloud|hostname> now                               - Set schedule end to now
+  shrink <cloud|hostname> date "YYYY-MM-DD HH:MM"           - Shrink to specific date
 ```
 
 **Unified Schedule Examples:**
@@ -861,6 +968,7 @@ schedule cloud02 host01,host02 "2026-05-15 22:00" "2026-06-15 22:00" \
   cc-users alice,bob \
   vlan 1234 \
   qinq 1 \
+  os "RHEL 9.4" \
   nowipe
 
 # Create assignment with specific date/time
@@ -907,10 +1015,10 @@ shrink host01.example.com weeks 2
 ### Available Hosts
 
 ```
-ls-available [OPTIONS]
+ls_available [OPTIONS]
   start YYYY-MM-DD        - Start date for availability
   end YYYY-MM-DD          - End date for availability
-  model MODEL             - Filter by server model
+  model MODEL             - Filter by server model (case-insensitive)
   ram GB                  - Minimum RAM in GB
   gpu-vendor VENDOR       - GPU vendor (e.g., "NVIDIA Corporation")
   gpu-product PRODUCT     - GPU model (e.g., "Tesla V100")
@@ -918,15 +1026,56 @@ ls-available [OPTIONS]
   disk-type TYPE          - Disk type (nvme, ssd, sata)
   disk-count N            - Minimum number of disks
   interfaces N            - Minimum number of network interfaces
+  nic-vendor VENDOR       - NIC vendor (e.g., "Intel", "Mellanox")
+  nic-speed GBPS          - Minimum NIC speed in Gbps
 ```
 
 **Examples:**
 ```bash
-ls-available model r640 ram 256
-ls-available gpu-vendor "NVIDIA Corporation" gpu-product "Tesla V100"
-ls-available disk-type nvme disk-count 2 interfaces 4
-ls-available start 2026-06-01 end 2026-06-15 model r650
+ls_available model r640 ram 256
+ls_available gpu-vendor "NVIDIA Corporation" gpu-product "Tesla V100"
+ls_available disk-type nvme disk-count 2 interfaces 4
+ls_available nic-vendor Mellanox nic-speed 25
+ls_available model r650 ram 256 disk-type nvme nic-speed 25
+ls_available start 2026-06-01 end 2026-06-15 model r650
 ```
+
+### Move Progress
+
+```
+move_status                       - Show all active host moves with progress
+move_status <hostname>            - Show detailed move progress for a specific host
+track                             - Live-track all active moves (auto-refreshing display)
+track <hostname>                  - Live-track a specific host
+track <cloudname>                 - Live-track moves for a specific cloud
+activity                          - Show active moves grouped by target cloud
+```
+
+After scheduling hosts, use `move_status` to track each host through the 12-stage provisioning pipeline (switch config, IPMI, hardware prep, provisioning, validation, etc.).
+
+**Examples:**
+```bash
+# View all active moves (table: host, from, to, progress, status, message)
+move_status
+
+# Check a specific host
+move_status host01.example.com
+
+# Live-track all moves (auto-refreshes every 5s, Ctrl+C to stop)
+track
+
+# Live-track a single host until completed or failed
+track host01.example.com
+
+# Live-track moves for a specific cloud
+track cloud03
+
+# Show cloud-grouped activity summary
+activity
+```
+
+> [!TIP]
+> The prompt shows a `⚡` indicator when moves are active. The GUI "Move Progress" view provides the same data with an auto-refresh toggle for hands-free monitoring.
 
 ### Other Commands
 
@@ -951,22 +1100,29 @@ When a command requires elevated permissions, the server will return a 403 Forbi
 
 ### User Registration & Assignments
 
-Users can register accounts directly from the CLI:
+Two authentication methods are supported:
 
+**SSO Token (preferred):**
+1. **Obtain a token** from the QUADS web portal under Profile > API Tokens
+2. **Connect** to a server and run `token-login`
+3. Token is saved to your config file — no password needed
+
+**Legacy username/password:**
 1. **Connect** to a server (credentials can be blank in config)
 2. **Register** with `register <email> <password>`
+   - If the account already exists, the client will auto-login and save credentials
+   - If registration is disabled (SSO-only server), guidance is shown to use `token-login`
 3. Credentials are automatically saved to your config file
-4. **Login** with the `login` command or reconnect
 
 SSM users can:
 - **Schedule** hosts with unified `schedule` command (count/hosts/host-list syntax)
-- **View** their own resources with `my-assignments` and `my-hosts` (ownership enforced)
+- **View** their own resources with `my_assignments` and `my_hosts` (ownership enforced)
 - **Terminate** assignments when done with `terminate` (own assignments only)
 - **Duration**: Server-controlled (5 days or Sunday 21:00 UTC, whichever first)
 - **Limits**: Max 10 hosts per assignment, max 3 active assignments per user
 
 Command visibility:
-- SSM users see only allowed commands (no `extend`, no admin commands)
+- SSM users see only allowed commands (no `extend`, no admin commands); `edit_server` is always visible since it modifies local config only
 - Admin users see all commands
 
 The server controls which hosts can be self-scheduled via the `can_self_schedule` flag.
@@ -1004,8 +1160,8 @@ quads-client/
 │   │   │   ├── schedule.py   - Self-scheduling view (SSM users)
 │   │   │   ├── my_hosts.py   - My hosts view
 │   │   │   ├── assignments.py- Assignments view
-│   │   │   ├── settings.py   - Settings/preferences view
-│   │   │   └── about.py      - About dialog
+│   │   │   ├── moves.py      - Move progress view
+│   │   │   └── settings.py   - Settings/preferences view
 │   │   └── widgets/          - Reusable custom widgets
 │   │       ├── base.py       - Base widget classes
 │   │       ├── dialogs.py    - Dialog helpers
@@ -1016,6 +1172,8 @@ quads-client/
 │       ├── cloud.py          - Cloud management
 │       ├── connection.py     - Connection commands
 │       ├── host.py           - Host management (admin)
+│       ├── moves.py          - Move progress and activity commands
+│       ├── track.py          - Live progress tracking (Rich Live)
 │       ├── schedule.py       - Schedule management (admin)
 │       ├── server.py         - Server configuration (programmatic methods)
 │       ├── session.py        - Session management
@@ -1023,7 +1181,7 @@ quads-client/
 │       └── version.py        - Version command
 ├── conf/
 │   └── quads-client.yml.example - Example configuration
-├── tests/                    - pytest test suite (519 tests, 71.0% coverage)
+├── tests/                    - pytest test suite (754 tests)
 │   ├── test_commands_programmatic.py - Tests for GUI-supporting programmatic methods
 │   └── ...                   - Other test files
 ├── rpm/
@@ -1041,7 +1199,7 @@ quads-client/
 
 - Python >= 3.13
 - cmd2 >= 2.0.0
-- quads-lib >= 0.1.9
+- quads-lib >= 0.1.15
 - PyYAML >= 6.0.0
 - argcomplete >= 3.1.2
 - tabulate >= 0.9.0
@@ -1132,6 +1290,26 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines on how to contribute to th
 
 <p align="left">
   <img src="images/quads-client-one-shot-ssm.png" alt="TUI CLI one-shot self-scheduling" width="600">
+</p>
+
+### Active Provisioning Tracking
+
+**Live move tracking with Rich auto-refresh**
+
+<p align="left">
+  <img src="images/track1.png" alt="Live move tracking" width="600">
+</p>
+
+**Flash Gordon(tm) means activity**
+
+<p align="left">
+  <img src="images/track2.png" alt="Scheduled moves awaiting move cycle" width="600">
+</p>
+
+**Granular activity tracking by Server**
+
+<p align="left">
+  <img src="images/track3.png" alt="Activity summary grouped by cloud" width="600">
 </p>
 
 ### GUI

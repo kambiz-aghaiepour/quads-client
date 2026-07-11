@@ -43,6 +43,8 @@ class GuiShell:
         self._models_cache_time = 0
         self._nic_vendors_cache = None
         self._nic_vendors_cache_time = 0
+        self._hosts_cache = None
+        self._hosts_cache_time = 0
         self._metadata_cache_ttl = 300
 
         try:
@@ -105,6 +107,25 @@ class GuiShell:
         self._models_cache_time = 0
         self._nic_vendors_cache = None
         self._nic_vendors_cache_time = 0
+        self._hosts_cache = None
+        self._hosts_cache_time = 0
+
+    def _get_cached_hosts(self):
+        """Fetch hosts with TTL cache, shared by models and NIC vendor lookups."""
+        now = time.monotonic()
+        if self._hosts_cache is not None and (now - self._hosts_cache_time) < self._metadata_cache_ttl:
+            return self._hosts_cache
+        if not self.is_authenticated():
+            return []
+        try:
+            hosts = self.connection.api.get_hosts()
+            if hosts and isinstance(hosts, list):
+                self._hosts_cache = hosts
+                self._hosts_cache_time = now
+                return hosts
+        except Exception:
+            pass
+        return []
 
     def get_available_models(self):
         """
@@ -121,24 +142,20 @@ class GuiShell:
         if not self.is_authenticated():
             return []
 
-        try:
-            hosts = self.connection.api.get_hosts()
-            if not hosts:
-                return []
-
-            models = set()
-            for host in hosts:
-                model = host.get("model", "").strip()
-                if model:
-                    models.add(model)
-
-            result = sorted(list(models))
-            self._models_cache = result
-            self._models_cache_time = now
-            return result
-
-        except Exception:
+        hosts = self._get_cached_hosts()
+        if not hosts:
             return []
+
+        models = set()
+        for host in hosts:
+            model = host.get("model", "").strip()
+            if model:
+                models.add(model)
+
+        result = sorted(list(models))
+        self._models_cache = result
+        self._models_cache_time = now
+        return result
 
     def get_available_vlans(self):
         """
@@ -186,6 +203,24 @@ class GuiShell:
             # Silently fail
             return []
 
+    def get_available_os(self):
+        """
+        Fetch available OS options from API.
+
+        Returns:
+            list: List of OS title strings, or empty list if error
+        """
+        if not self.is_authenticated():
+            return []
+
+        try:
+            os_list = self.connection.api.get_os_list()
+            if not os_list:
+                return []
+            return [os_item.get("Title", "") for os_item in os_list if os_item.get("Title")]
+        except Exception:
+            return []
+
     def get_available_nic_vendors(self):
         """
         Fetch unique NIC vendor names from hosts for dropdown population.
@@ -201,28 +236,24 @@ class GuiShell:
         if not self.is_authenticated():
             return []
 
-        try:
-            hosts = self.connection.api.get_hosts()
-            if not hosts:
-                return []
-
-            vendors = set()
-            for host in hosts:
-                interfaces = host.get("interfaces", [])
-                if isinstance(interfaces, list):
-                    for iface in interfaces:
-                        if isinstance(iface, dict):
-                            vendor = iface.get("vendor", "").strip()
-                            if vendor:
-                                vendors.add(vendor)
-
-            result = sorted(list(vendors))
-            self._nic_vendors_cache = result
-            self._nic_vendors_cache_time = now
-            return result
-
-        except Exception:
+        hosts = self._get_cached_hosts()
+        if not hosts:
             return []
+
+        vendors = set()
+        for host in hosts:
+            interfaces = host.get("interfaces", [])
+            if isinstance(interfaces, list):
+                for iface in interfaces:
+                    if isinstance(iface, dict):
+                        vendor = iface.get("vendor", "").strip()
+                        if vendor:
+                            vendors.add(vendor)
+
+        result = sorted(list(vendors))
+        self._nic_vendors_cache = result
+        self._nic_vendors_cache_time = now
+        return result
 
     def get_available_hosts_data(self, **filters):
         """
@@ -232,7 +263,7 @@ class GuiShell:
         Accepts filter keys matching the CLI ls-available command:
             model, memory__gte, disks.disk_type, disks.size_gb__gte,
             disks.count__gte, interfaces.vendor, interfaces.speed__gte,
-            processors.vendor__like, start, end
+            processors.processor_type, start, end
 
         Start/end dates trigger per-host is_available() checks (same as CLI).
 

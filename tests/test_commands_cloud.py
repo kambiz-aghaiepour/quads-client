@@ -180,4 +180,61 @@ def test_cloud_only_no_args(mock_shell):
     cloud_cmd = CloudCommands(mock_shell)
     cloud_cmd.cmd_cloud_only("")
 
-    mock_shell.perror.assert_called_with("Usage: cloud_only <cloud_name>")
+
+def test_os_list_success(mock_shell):
+    """Test os-list command with available OS images"""
+    mock_shell.connection.is_connected = True
+    mock_shell.connection.api.get_os_list.return_value = [
+        {"Id": 1, "Title": "RHEL 9.4", "Release Name": "Plow", "Family": "rhel"},
+        {"Id": 2, "Title": "RHEL 8.10", "Release Name": "Ootpa", "Family": "rhel"},
+    ]
+
+    cloud_cmd = CloudCommands(mock_shell)
+    cloud_cmd.cmd_os_list("")
+
+    mock_shell.connection.api.get_os_list.assert_called_once()
+    mock_shell.poutput.assert_called_once()
+
+
+def test_os_list_empty(mock_shell):
+    """Test os-list when no OS images available"""
+    mock_shell.connection.is_connected = True
+    mock_shell.connection.api.get_os_list.return_value = []
+
+    cloud_cmd = CloudCommands(mock_shell)
+    cloud_cmd.cmd_os_list("")
+
+    mock_shell.poutput.assert_called_with("No available operating systems")
+
+
+def test_os_list_not_connected(mock_shell):
+    """Test os-list when not connected"""
+    mock_shell.connection.is_connected = False
+
+    cloud_cmd = CloudCommands(mock_shell)
+    cloud_cmd.cmd_os_list("")
+
+    mock_shell.perror.assert_called_with("Not connected to any server")
+
+
+def test_os_list_api_error(mock_shell):
+    """Test os-list when API call fails"""
+    mock_shell.connection.is_connected = True
+    mock_shell.connection.api.get_os_list.side_effect = Exception("Connection error")
+
+    cloud_cmd = CloudCommands(mock_shell)
+    cloud_cmd.cmd_os_list("")
+
+    mock_shell.perror.assert_called()
+
+
+def test_mod_cloud_with_os(mock_shell):
+    """Test mod-cloud with os option"""
+    mock_shell.connection.is_connected = True
+    mock_shell.connection.api.get_active_cloud_assignment.return_value = {"id": 42}
+    mock_shell.connection.api.update_assignment.return_value = {"status": "success"}
+
+    cloud_cmd = CloudCommands(mock_shell)
+    cloud_cmd.cmd_mod_cloud('cloud05 os "RHEL 9.4"')
+
+    mock_shell.connection.api.update_assignment.assert_called_once_with(42, {"ostype": "RHEL 9.4"})

@@ -73,6 +73,12 @@ class DatePickerDialog(tk.Toplevel):
         self.result = None
         self.today = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
 
+        # Inherit background from the app root window for theme consistency
+        try:
+            self.configure(bg=self.nametowidget(".").cget("bg"))
+        except (tk.TclError, AttributeError, KeyError):
+            pass
+
         # Parse initial date or use today
         if initial_date:
             try:
@@ -189,10 +195,10 @@ class DatePickerDialog(tk.Toplevel):
 
         # Buttons
         button_frame = ttk.Frame(self)
-        button_frame.pack(fill=tk.X, padx=10, pady=10)
+        button_frame.pack(anchor=tk.E, padx=10, pady=10)
 
-        ttk.Button(button_frame, text="Cancel", command=self._cancel).pack(side=tk.RIGHT, padx=5)
-        ttk.Button(button_frame, text="OK", command=self._ok).pack(side=tk.RIGHT, padx=5)
+        ttk.Button(button_frame, text="OK", command=self._ok).pack(side=tk.LEFT, padx=5)
+        ttk.Button(button_frame, text="Cancel", command=self._cancel).pack(side=tk.LEFT, padx=5)
 
         self._update_calendar()
 

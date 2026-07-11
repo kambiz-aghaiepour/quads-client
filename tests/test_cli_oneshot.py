@@ -1,6 +1,6 @@
 import pytest
 import sys
-from unittest.mock import MagicMock, patch, call
+from unittest.mock import MagicMock, patch, call, PropertyMock
 from io import StringIO
 
 
@@ -32,7 +32,9 @@ class TestOneShot:
                 mock_shell_instance = MagicMock()
                 MockShell.return_value = mock_shell_instance
 
-                main()
+                with patch("sys.stdin") as mock_stdin:
+                    mock_stdin.isatty.return_value = True
+                    main()
 
                 MockShell.assert_called_once_with(quiet=False)
                 mock_shell_instance.cmdloop.assert_called_once()
@@ -342,7 +344,18 @@ class TestCommandsAllowlist:
 
     @pytest.mark.parametrize(
         "cmd",
-        ["version", "help", "servers", "exit", "quit"],
+        [
+            "version",
+            "help",
+            "servers",
+            "exit",
+            "quit",
+            "add_quads_server",
+            "add_server",
+            "edit_server",
+            "rm_server",
+            "config_reload",
+        ],
     )
     def test_no_connection_commands(self, cmd, mock_shell):
         """Test that allowlisted commands skip auto-connect"""
@@ -374,3 +387,108 @@ class TestCommandsAllowlist:
 
         assert result is True
         mock_shell.config.get_default_server.assert_called()
+
+
+class TestPipedStdin:
+    """Tests for piped stdin mode"""
+
+    def test_piped_mode_detected(self):
+        """Test that piped mode is detected when stdin is not a tty"""
+        with patch("sys.argv", ["quads-client"]):
+            from quads_client.cli import main
+
+            mock_stdin = StringIO("version\n")
+            mock_stdin.isatty = lambda: False
+
+            with patch("quads_client.cli.main.QuadsClientShell") as MockShell:
+                mock_instance = MagicMock()
+                mock_instance.execute_oneshot_command.return_value = 0
+                MockShell.return_value = mock_instance
+
+                with patch("sys.stdin", mock_stdin):
+                    with pytest.raises(SystemExit) as exc_info:
+                        main()
+
+                MockShell.assert_called_once_with(quiet=True)
+                mock_instance.execute_oneshot_command.assert_called_once_with("version")
+                assert exc_info.value.code == 0
+
+    def test_piped_mode_multiple_lines(self):
+        """Test piped mode executes multiple commands"""
+        with patch("sys.argv", ["quads-client"]):
+            from quads_client.cli import main
+
+            mock_stdin = StringIO("version\nservers\nhelp\n")
+            mock_stdin.isatty = lambda: False
+
+            with patch("quads_client.cli.main.QuadsClientShell") as MockShell:
+                mock_instance = MagicMock()
+                mock_instance.execute_oneshot_command.return_value = 0
+                MockShell.return_value = mock_instance
+
+                with patch("sys.stdin", mock_stdin):
+                    with pytest.raises(SystemExit) as exc_info:
+                        main()
+
+                assert mock_instance.execute_oneshot_command.call_count == 3
+                mock_instance.execute_oneshot_command.assert_any_call("version")
+                mock_instance.execute_oneshot_command.assert_any_call("servers")
+                mock_instance.execute_oneshot_command.assert_any_call("help")
+                assert exc_info.value.code == 0
+
+    def test_piped_mode_skips_empty_and_comments(self):
+        """Test piped mode skips empty lines and comments"""
+        with patch("sys.argv", ["quads-client"]):
+            from quads_client.cli import main
+
+            mock_stdin = StringIO("version\n\n# this is a comment\n\nservers\n")
+            mock_stdin.isatty = lambda: False
+
+            with patch("quads_client.cli.main.QuadsClientShell") as MockShell:
+                mock_instance = MagicMock()
+                mock_instance.execute_oneshot_command.return_value = 0
+                MockShell.return_value = mock_instance
+
+                with patch("sys.stdin", mock_stdin):
+                    with pytest.raises(SystemExit) as exc_info:
+                        main()
+
+                assert mock_instance.execute_oneshot_command.call_count == 2
+                mock_instance.execute_oneshot_command.assert_any_call("version")
+                mock_instance.execute_oneshot_command.assert_any_call("servers")
+                assert exc_info.value.code == 0
+
+    def test_piped_mode_exit_code_propagation(self):
+        """Test piped mode propagates non-zero exit code"""
+        with patch("sys.argv", ["quads-client"]):
+            from quads_client.cli import main
+
+            mock_stdin = StringIO("version\ncloud_list\n")
+            mock_stdin.isatty = lambda: False
+
+            with patch("quads_client.cli.main.QuadsClientShell") as MockShell:
+                mock_instance = MagicMock()
+                mock_instance.execute_oneshot_command.side_effect = [0, 3]
+                MockShell.return_value = mock_instance
+
+                with patch("sys.stdin", mock_stdin):
+                    with pytest.raises(SystemExit) as exc_info:
+                        main()
+
+                assert exc_info.value.code == 3
+
+    def test_interactive_mode_when_tty(self):
+        """Test interactive mode is used when stdin is a tty and no args"""
+        with patch("sys.argv", ["quads-client"]):
+            from quads_client.cli import main
+
+            with patch("quads_client.cli.main.QuadsClientShell") as MockShell:
+                mock_instance = MagicMock()
+                MockShell.return_value = mock_instance
+
+                with patch("sys.stdin") as mock_stdin:
+                    mock_stdin.isatty.return_value = True
+                    main()
+
+                MockShell.assert_called_once_with(quiet=False)
+                mock_instance.cmdloop.assert_called_once()

@@ -1,12 +1,16 @@
+import time
+
 import cmd2
 
 from quads_client.commands.available import AvailableCommands
 from quads_client.commands.cloud import CloudCommands
 from quads_client.commands.connection import ConnectionCommands
 from quads_client.commands.host import HostCommands
+from quads_client.commands.moves import MoveCommands
 from quads_client.commands.schedule import ScheduleCommands
 from quads_client.commands.server import ServerCommands
 from quads_client.commands.session import SessionCommands
+from quads_client.commands.track import TrackCommands
 from quads_client.commands.user import UserCommands
 from quads_client.commands.version import VersionCommands
 from quads_client.config import ConfigError, QuadsClientConfig
@@ -14,6 +18,11 @@ from quads_client.history import CommandHistory
 from quads_client.rich_console import RichConsole
 from quads_client.session_manager import SessionManager
 from quads_client.utils import get_ssl_indicator
+
+
+def _rl(ansi):
+    """Wrap ANSI escape code for readline (mark as non-printing)"""
+    return f"\001{ansi}\002"
 
 
 class QuadsClientShell(cmd2.Cmd):
@@ -31,14 +40,6 @@ class QuadsClientShell(cmd2.Cmd):
         self.rich_console = RichConsole()
         self.quiet = quiet
 
-        # Only print banner in interactive mode
-        if not quiet:
-            self.rich_console.print_banner()
-
-            # Show onboarding message if no servers configured
-            if self.config and self.config.needs_initial_setup():
-                self._print_onboarding_message()
-
         # Hide unwanted cmd2 built-in commands and dangerous cloud management commands
         self.permanently_hidden = [
             "macro",
@@ -47,6 +48,10 @@ class QuadsClientShell(cmd2.Cmd):
             "run_pyscript",
             "shortcuts",
             "_relative_run_script",
+            "eof",
+            "set",
+            "ipy",
+            "py",
             "cloud_create",  # Too dangerous - no use case for empty clouds
             "cloud_delete",  # Too dangerous - can break active assignments
         ]
@@ -58,6 +63,17 @@ class QuadsClientShell(cmd2.Cmd):
         except ConfigError as e:
             self.pwarning(f"Configuration error: {e}")
 
+        # Print banner after config is loaded so we know if servers exist
+        if not quiet:
+            has_servers = self.config and not self.config.needs_initial_setup()
+            self.rich_console.print_banner(has_servers=has_servers)
+
+            if not has_servers:
+                self._print_onboarding_message()
+
+        self._last_activity_check = 0
+        self._cached_activity_indicator = ""
+
         self.connection_commands = ConnectionCommands(self)
         self.version_commands = VersionCommands(self)
         self.cloud_commands = CloudCommands(self)
@@ -65,6 +81,8 @@ class QuadsClientShell(cmd2.Cmd):
         self.host_commands = HostCommands(self)
         self.schedule_commands = ScheduleCommands(self)
         self.available_commands = AvailableCommands(self)
+        self.move_commands = MoveCommands(self)
+        self.track_commands = TrackCommands(self)
         self.server_commands = ServerCommands(self)
         self.session_commands = SessionCommands(self)
 
@@ -78,6 +96,37 @@ class QuadsClientShell(cmd2.Cmd):
             return self.session_manager.active_connection
         return None
 
+    def preloop(self):
+        """Configure custom readline keybindings"""
+        super().preloop()
+        try:
+            import readline
+
+            readline.parse_and_bind('"\\C-a\\C-a": "session_switch\\n"')
+        except (ImportError, OSError):
+            pass
+
+    def postcmd(self, stop, line):
+        self._update_prompt()
+        return stop
+
+    def _get_activity_indicator(self):
+        if not self.connection or not self.connection.is_authenticated:
+            return ""
+        now = time.time()
+        if now - self._last_activity_check < 30:
+            return self._cached_activity_indicator
+        self._last_activity_check = now
+        try:
+            moves = self.connection.api.get_all_move_status()
+            if moves:
+                self._cached_activity_indicator = f"{_rl(chr(27) + '[1;33m')}⚡{_rl(chr(27) + '[0m')}"
+            else:
+                self._cached_activity_indicator = ""
+        except Exception:
+            self._cached_activity_indicator = ""
+        return self._cached_activity_indicator
+
     def do_exit(self, args):
         """Exit the application"""
         return True
@@ -87,14 +136,13 @@ class QuadsClientShell(cmd2.Cmd):
         self.poutput("\n\033[1;33m Welcome to QUADS Client! \033[0m")
         self.poutput("\n\033[1mGetting Started:\033[0m")
         self.poutput("  1. Add your QUADS server:")
-        self.poutput("     \033[1;36madd-quads-server\033[0m")
+        self.poutput("     \033[1;36madd_quads_server\033[0m")
         self.poutput("     (Follow the interactive prompts)\n")
-        self.poutput("  2. Reload configuration:")
-        self.poutput("     \033[1;36mconfig_reload\033[0m\n")
-        self.poutput("  3. Connect to your server:")
+        self.poutput("  2. Connect to your server:")
         self.poutput("     \033[1;36mconnect <server_name>\033[0m\n")
-        self.poutput("  4. Register new account (or login if you have one):")
-        self.poutput("     \033[1;36mregister your.email@example.com YourPassword123\033[0m\n")
+        self.poutput("  3. Authenticate:")
+        self.poutput("     \033[1;36mtoken-login\033[0m              (SSO token)")
+        self.poutput("     \033[1;36mregister <email> <pass>\033[0m  (new account)\n")
         self.poutput("  Type \033[1mhelp\033[0m for more commands.\n")
 
     def _shorten_server_name(self, name):
@@ -109,29 +157,23 @@ class QuadsClientShell(cmd2.Cmd):
             server = self.connection.current_server
             short_name = self._shorten_server_name(server)
 
-            # Get SSL indicator
             url = self.config.get_server_url(server)
             verify = self.config.get_server_verify(server)
             symbol, color = get_ssl_indicator(url, verify)
 
-            # Add session indicators
             session_info = self._get_session_indicators()
 
-            # Add admin badge if user is admin
             admin_badge = ""
             if self.connection and self.connection.is_admin:
-                admin_badge = " \033[1;31m[ADMIN]\033[0m"
+                admin_badge = f" {_rl(chr(27) + '[1;31m')}[ADMIN]{_rl(chr(27) + '[0m')}"
 
-            # DEBUG: Uncomment to troubleshoot admin detection
-            # import sys
-            # print(
-            #     f"DEBUG: is_admin={self.connection.is_admin}, username={self.connection.username}",
-            #     file=sys.stderr
-            # )
+            activity = self._get_activity_indicator()
 
-            self.prompt = f"{color}{symbol} {session_info}({short_name}){admin_badge}\033[0m > "
+            self.prompt = (
+                f"{_rl(color)}{symbol} {session_info}({short_name}){activity}{admin_badge}{_rl(chr(27) + '[0m')} > "
+            )
         else:
-            self.prompt = "\033[1;31m(disconnected)\033[0m > "
+            self.prompt = f"{_rl(chr(27) + '[1;31m')}(disconnected){_rl(chr(27) + '[0m')} > "
 
     def _get_session_indicators(self) -> str:
         """Generate session indicator string like '[1:dev* 2:prod]'"""
@@ -171,18 +213,12 @@ class QuadsClientShell(cmd2.Cmd):
             "ls_broken",
             "ls_retired",
             "ls_schedule",
-            "add_schedule",
             "mod_schedule",
-            "rm_schedule",
             "extend",
             "shrink",
-            "define_cloud",
-            "schedule_list",
-            "schedule_update",
-            "schedule_delete",
             "add_server",
-            "edit_server",
             "rm_server",
+            "debug_admin",
         ]
 
         # Deprecated commands (hidden from all users)
@@ -200,9 +236,13 @@ class QuadsClientShell(cmd2.Cmd):
             "assignment_list",
             "my_hosts",
             "my_assignments",
-            "release",
+            "terminate",
             "cloud_list",
             "ls_available",
+            "os_list",
+            "move_status",
+            "track",
+            "activity",
         ]
 
         # Get current authentication state
@@ -280,6 +320,10 @@ class QuadsClientShell(cmd2.Cmd):
         """List VLANs with assigned clouds (admin only)"""
         self.cloud_commands.cmd_ls_vlan(args)
 
+    def do_os_list(self, args):
+        """List available operating systems for provisioning"""
+        self.cloud_commands.cmd_os_list(args)
+
     def do_cloud_create(self, args):
         """Create a new cloud (admin only)"""
         self.cloud_commands.cmd_cloud_create(args)
@@ -295,6 +339,10 @@ class QuadsClientShell(cmd2.Cmd):
     def do_login(self, args):
         """Login to current server"""
         self.user_commands.cmd_login(args)
+
+    def do_token_login(self, args):
+        """Login with an SSO API token"""
+        self.user_commands.cmd_token_login(args)
 
     def do_whoami(self, args):
         """Show current user information"""
@@ -313,8 +361,8 @@ class QuadsClientShell(cmd2.Cmd):
         self.user_commands.cmd_assignment_status(args)
 
     def do_assignment_terminate(self, args):
-        """Terminate an assignment"""
-        self.user_commands.cmd_assignment_terminate(args)
+        """Terminate an assignment (deprecated, use terminate)"""
+        self.user_commands.cmd_terminate(args)
 
     def do_schedule(self, args):
         """
@@ -334,7 +382,24 @@ class QuadsClientShell(cmd2.Cmd):
             return []
 
         parts = line.split()
-        keywords = ["description", "nowipe", "vlan", "qinq", "model", "ram", "host-list"]
+        keywords = [
+            "description",
+            "nowipe",
+            "vlan",
+            "qinq",
+            "os",
+            "model",
+            "ram",
+            "host-list",
+            "disk-type",
+            "disk-size",
+            "disk-count",
+            "gpu-vendor",
+            "gpu-product",
+            "interfaces",
+            "nic-vendor",
+            "nic-speed",
+        ]
 
         # For admin mode, try to get cloud names
         if self.connection.is_admin:
@@ -437,26 +502,27 @@ class QuadsClientShell(cmd2.Cmd):
         return []
 
     def complete_shrink(self, text, line, begidx, endidx):
-        """Autocomplete for shrink command"""
+        """Autocomplete for shrink command - cloud names or hostnames, then mode keywords"""
         if not self.connection or not self.connection.is_admin:
             return []
 
         parts = line.split()
         try:
-            keywords = ["--host", "--weeks"]
-
-            # If looking for hostname after --host
-            if len(parts) > 1 and parts[-2] == "--host":
+            if len(parts) <= 2:
+                clouds = self.connection.api.get_clouds()
+                cloud_names = [c.get("name") for c in clouds]
                 schedules = self.connection.api.get_current_schedules({})
-                hostnames = [s.get("host", {}).get("name", "") for s in schedules]
+                hostnames = list(set(s.get("host", {}).get("name", "") for s in schedules))
+                candidates = cloud_names + hostnames
                 if text:
-                    return [h for h in hostnames if h.startswith(text)]
-                return hostnames
+                    return [c for c in candidates if c.startswith(text)]
+                return candidates
 
-            # Otherwise suggest keywords
-            if text:
-                return [k for k in keywords if k.startswith(text)]
-            return keywords
+            if len(parts) == 3:
+                keywords = ["weeks", "days", "now", "date"]
+                if text:
+                    return [k for k in keywords if k.startswith(text)]
+                return keywords
         except Exception:
             pass
         return []
@@ -492,7 +558,16 @@ class QuadsClientShell(cmd2.Cmd):
                 return cloud_names
 
             # Subsequent args: attributes
-            keywords = ["cloud-owner", "description", "cloud-ticket", "cc-users", "vlan", "qinq", "wipe", "nowipe"]
+            keywords = [
+                "cloud-owner",
+                "description",
+                "cloud-ticket",
+                "cc-users",
+                "vlan",
+                "qinq",
+                "wipe",
+                "nowipe",
+            ]
             if text:
                 return [k for k in keywords if k.startswith(text)]
             return keywords
@@ -507,10 +582,10 @@ class QuadsClientShell(cmd2.Cmd):
 
         parts = line.split()
         try:
-            keywords = ["--cloud", "--detail"]
+            keywords = ["cloud", "detail"]
 
-            # If looking for cloud name after --cloud
-            if len(parts) > 1 and parts[-2] == "--cloud":
+            # If looking for cloud name after cloud keyword
+            if len(parts) > 1 and parts[-2] == "cloud":
                 clouds = self.connection.api.get_clouds()
                 cloud_names = [c.get("name") for c in clouds]
                 if text:
@@ -596,51 +671,18 @@ class QuadsClientShell(cmd2.Cmd):
 
         parts = line.split()
         try:
-            keywords = ["--host", "--cloud"]
+            keywords = ["host", "cloud"]
 
-            # If looking for hostname after --host
-            if len(parts) > 1 and parts[-2] == "--host":
+            # If looking for hostname after host keyword
+            if len(parts) > 1 and parts[-2] == "host":
                 hosts = self.connection.api.get_hosts()
                 hostnames = [h.get("name") for h in hosts]
                 if text:
                     return [h for h in hostnames if h.startswith(text)]
                 return hostnames
 
-            # If looking for cloud name after --cloud
-            if len(parts) > 1 and parts[-2] == "--cloud":
-                clouds = self.connection.api.get_clouds()
-                cloud_names = [c.get("name") for c in clouds]
-                if text:
-                    return [c for c in cloud_names if c.startswith(text)]
-                return cloud_names
-
-            # Otherwise suggest keywords
-            if text:
-                return [k for k in keywords if k.startswith(text)]
-            return keywords
-        except Exception:
-            pass
-        return []
-
-    def complete_add_schedule(self, text, line, begidx, endidx):
-        """Autocomplete for add-schedule command"""
-        if not self.connection or not self.connection.is_admin:
-            return []
-
-        parts = line.split()
-        try:
-            keywords = ["--host", "--cloud", "--start", "--end"]
-
-            # If looking for hostname after --host
-            if len(parts) > 1 and parts[-2] == "--host":
-                hosts = self.connection.api.get_hosts()
-                hostnames = [h.get("name") for h in hosts]
-                if text:
-                    return [h for h in hostnames if h.startswith(text)]
-                return hostnames
-
-            # If looking for cloud name after --cloud
-            if len(parts) > 1 and parts[-2] == "--cloud":
+            # If looking for cloud name after cloud keyword
+            if len(parts) > 1 and parts[-2] == "cloud":
                 clouds = self.connection.api.get_clouds()
                 cloud_names = [c.get("name") for c in clouds]
                 if text:
@@ -662,10 +704,10 @@ class QuadsClientShell(cmd2.Cmd):
 
         parts = line.split()
         try:
-            keywords = ["--id", "--start", "--end"]
+            keywords = ["id", "start", "end"]
 
-            # If looking for schedule ID after --id
-            if len(parts) > 1 and parts[-2] == "--id":
+            # If looking for schedule ID after id keyword
+            if len(parts) > 1 and parts[-2] == "id":
                 schedules = self.connection.api.get_schedules({})
                 schedule_ids = [str(s.get("id")) for s in schedules]
                 if text:
@@ -676,21 +718,6 @@ class QuadsClientShell(cmd2.Cmd):
             if text:
                 return [k for k in keywords if k.startswith(text)]
             return keywords
-        except Exception:
-            pass
-        return []
-
-    def complete_rm_schedule(self, text, line, begidx, endidx):
-        """Autocomplete for rm-schedule command"""
-        if not self.connection or not self.connection.is_admin:
-            return []
-
-        try:
-            schedules = self.connection.api.get_schedules({})
-            schedule_ids = [str(s.get("id")) for s in schedules]
-            if text:
-                return [i for i in schedule_ids if i.startswith(text)]
-            return schedule_ids
         except Exception:
             pass
         return []
@@ -710,7 +737,7 @@ class QuadsClientShell(cmd2.Cmd):
                 return servers
 
             # Subsequent args: attributes
-            keywords = ["--url", "--username", "--password", "--verify"]
+            keywords = ["url", "username", "password", "token", "verify"]
             if text:
                 return [k for k in keywords if k.startswith(text)]
             return keywords
@@ -779,17 +806,9 @@ class QuadsClientShell(cmd2.Cmd):
         """List schedules"""
         self.schedule_commands.cmd_ls_schedule(args)
 
-    def do_add_schedule(self, args):
-        """Add a schedule"""
-        self.schedule_commands.cmd_add_schedule(args)
-
     def do_mod_schedule(self, args):
         """Modify a schedule"""
         self.schedule_commands.cmd_mod_schedule(args)
-
-    def do_rm_schedule(self, args):
-        """Remove a schedule"""
-        self.schedule_commands.cmd_rm_schedule(args)
 
     def do_extend(self, args):
         """Extend a schedule"""
@@ -799,9 +818,41 @@ class QuadsClientShell(cmd2.Cmd):
         """Shrink a schedule"""
         self.schedule_commands.cmd_shrink(args)
 
+    def complete_ls_available(self, text, line, begidx, endidx):
+        """Autocomplete for ls_available command - filter keywords"""
+        keywords = [
+            "start",
+            "end",
+            "model",
+            "ram",
+            "gpu-vendor",
+            "gpu-product",
+            "disk-size",
+            "disk-type",
+            "disk-count",
+            "interfaces",
+            "nic-vendor",
+            "nic-speed",
+        ]
+        if text:
+            return [k for k in keywords if k.startswith(text)]
+        return keywords
+
     def do_ls_available(self, args):
         """List available hosts"""
         self.available_commands.cmd_ls_available(args)
+
+    def do_move_status(self, args):
+        """Show move/rebuild progress. Usage: move_status [hostname]"""
+        self.move_commands.cmd_move_status(args)
+
+    def do_track(self, args):
+        """Live-track move/rebuild progress. Usage: track [hostname|cloudname]"""
+        self.track_commands.cmd_track(args)
+
+    def do_activity(self, args):
+        """Show active moves grouped by cloud. Usage: activity"""
+        self.move_commands.cmd_activity(args)
 
     def do_servers(self, args):
         """List all configured servers"""
@@ -858,7 +909,18 @@ class QuadsClientShell(cmd2.Cmd):
     def _auto_connect_for_oneshot(self, cmd_str):
         """Auto-connect to default server for one-shot commands that need it"""
         # Commands that don't require connection
-        no_connection_cmds = ["version", "help", "servers", "exit", "quit"]
+        no_connection_cmds = [
+            "version",
+            "help",
+            "servers",
+            "exit",
+            "quit",
+            "add_quads_server",
+            "add_server",
+            "edit_server",
+            "rm_server",
+            "config_reload",
+        ]
         cmd_name = cmd_str.split()[0] if cmd_str else ""
 
         # Skip auto-connect for commands that don't need it

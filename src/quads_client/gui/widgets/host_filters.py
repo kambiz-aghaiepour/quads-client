@@ -1,5 +1,6 @@
 """Reusable host metadata filter widget for Available and Schedule views"""
 
+import threading
 import tkinter as tk
 from tkinter import ttk
 
@@ -29,7 +30,7 @@ class HostFilterFrame(ttk.Frame):
         row1.pack(fill=tk.X, pady=(0, 5))
 
         ttk.Label(row1, text="Model:").pack(side=tk.LEFT, padx=(0, 5))
-        models = ["All"] + self.shell.get_available_models()
+        models = ["All"]
         self.model_combo = ttk.Combobox(row1, values=models, width=15, state="readonly")
         self.model_combo.set("All")
         self.model_combo.pack(side=tk.LEFT, padx=(0, 20))
@@ -86,7 +87,7 @@ class HostFilterFrame(ttk.Frame):
         adv_row3.pack(fill=tk.X, pady=(0, 5))
 
         ttk.Label(adv_row3, text="NIC Vendor:").pack(side=tk.LEFT, padx=(0, 5))
-        nic_vendors = ["All"] + self.shell.get_available_nic_vendors()
+        nic_vendors = ["All"]
         self.nic_vendor_combo = ttk.Combobox(adv_row3, values=nic_vendors, width=20, state="readonly")
         self.nic_vendor_combo.set("All")
         self.nic_vendor_combo.pack(side=tk.LEFT, padx=(0, 20))
@@ -200,7 +201,7 @@ class HostFilterFrame(ttk.Frame):
                     pass
 
             if self.gpu_var.get():
-                filters["processors.vendor__like"] = "%"
+                filters["processors.processor_type"] = "GPU"
 
         return filters
 
@@ -219,3 +220,31 @@ class HostFilterFrame(ttk.Frame):
         self.nic_vendor_combo.set("All")
         self.nic_speed_entry.delete(0, tk.END)
         self.gpu_var.set(False)
+
+    def populate_metadata_async(self):
+        """Fetch models and NIC vendors in a background thread, then update combos."""
+
+        def _fetch():
+            models = self.shell.get_available_models()
+            nic_vendors = self.shell.get_available_nic_vendors()
+            return models, nic_vendors
+
+        def _apply(models, nic_vendors):
+            current_model = self.model_combo.get()
+            self.model_combo.config(values=["All"] + models)
+            if current_model not in (["All"] + models):
+                self.model_combo.set("All")
+
+            current_vendor = self.nic_vendor_combo.get()
+            self.nic_vendor_combo.config(values=["All"] + nic_vendors)
+            if current_vendor not in (["All"] + nic_vendors):
+                self.nic_vendor_combo.set("All")
+
+        def _worker():
+            try:
+                models, nic_vendors = _fetch()
+                self.after(0, lambda: _apply(models, nic_vendors))
+            except Exception:
+                pass
+
+        threading.Thread(target=_worker, daemon=True).start()

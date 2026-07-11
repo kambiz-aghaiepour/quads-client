@@ -2,6 +2,8 @@
 
 import threading
 import tkinter as tk
+from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
 from tkinter import ttk, messagebox
 
 from quads_client.gui.widgets.dialogs import show_error_dialog
@@ -78,13 +80,48 @@ class MyHostsView(ttk.Frame):
         if self.auto_refresh_enabled:
             self.after(self.refresh_interval, self._schedule_auto_refresh)
 
-        self.content_frame = ttk.Frame(self)
-        self.content_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=(0, 20))
+        canvas_frame = ttk.Frame(self)
+        canvas_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=(0, 20))
+
+        self._canvas = tk.Canvas(
+            canvas_frame, highlightthickness=0, bg=self.shell.gui_app.theme_manager.get_color("bg")
+        )
+        scrollbar = ttk.Scrollbar(canvas_frame, orient="vertical", command=self._canvas.yview)
+        self.content_frame = ttk.Frame(self._canvas)
+
+        self.content_frame.bind("<Configure>", lambda e: self._canvas.configure(scrollregion=self._canvas.bbox("all")))
+        self._canvas_window = self._canvas.create_window((0, 0), window=self.content_frame, anchor="nw")
+        self._canvas.configure(yscrollcommand=scrollbar.set)
+        self._canvas.bind("<Configure>", lambda e: self._canvas.itemconfig(self._canvas_window, width=e.width))
+
+        self._canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+
+        self._canvas.bind("<Enter>", self._bind_mousewheel)
+        self._canvas.bind("<Leave>", self._unbind_mousewheel)
 
         self.status_label = ttk.Label(self, text="Loading...", font=("TkDefaultFont", 9))
         self.status_label.pack(side=tk.BOTTOM, fill=tk.X, padx=20, pady=(0, 10))
 
         self._load_assignments()
+
+    def _bind_mousewheel(self, event=None):
+        self._canvas.bind_all("<MouseWheel>", self._on_mousewheel)
+        self._canvas.bind_all("<Button-4>", self._on_mousewheel)
+        self._canvas.bind_all("<Button-5>", self._on_mousewheel)
+
+    def _unbind_mousewheel(self, event=None):
+        self._canvas.unbind_all("<MouseWheel>")
+        self._canvas.unbind_all("<Button-4>")
+        self._canvas.unbind_all("<Button-5>")
+
+    def _on_mousewheel(self, event):
+        if event.num == 4:
+            self._canvas.yview_scroll(-1, "units")
+        elif event.num == 5:
+            self._canvas.yview_scroll(1, "units")
+        else:
+            self._canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
 
     def _load_assignments(self):
         """Load user's assignments"""
@@ -151,6 +188,7 @@ class MyHostsView(ttk.Frame):
     def _fetch_assignments(self):
         """Fetch assignments from the server via CLI command"""
         from quads_client.utils import get_username_short
+        from quads_client.progress import format_progress_str
 
         assignments_data = []
 
@@ -161,6 +199,14 @@ class MyHostsView(ttk.Frame):
 
             if not user_assignments:
                 return []
+
+            move_status_map = {}
+            try:
+                all_moves = self.shell.connection.api.get_all_move_status()
+                if all_moves:
+                    move_status_map = {m["host"]: m for m in all_moves if isinstance(m, dict)}
+            except Exception as e:
+                self.shell.perror(f"Failed to fetch move status: {e}")
 
             for assignment in user_assignments:
                 if isinstance(assignment, dict):
@@ -178,24 +224,46 @@ class MyHostsView(ttk.Frame):
                     is_validated = assignment.get("validated", False)
 
                     hosts = []
+                    created = "N/A"
+                    expires = "N/A"
+                    days_remaining = "N/A"
+
                     for schedule in schedules if schedules else []:
                         if isinstance(schedule, dict):
                             hostname = schedule.get("host", {})
                             if isinstance(hostname, dict):
                                 hostname = hostname.get("name", "")
 
-                            status = "active" if is_validated else "provisioning"
-                            hosts.append({"name": str(hostname), "status": status, "progress": "N/A"})
+                            if is_validated:
+                                status = "active"
+                                progress = format_progress_str("completed")
+                            else:
+                                move_data = move_status_map.get(str(hostname))
+                                if move_data:
+                                    move_status = move_data.get("status", "pending")
+                                    progress = format_progress_str(move_status)
+                                    status = move_status
+                                else:
+                                    status = "scheduled"
+                                    progress = "Awaiting move"
+
+                            hosts.append({"name": str(hostname), "status": status, "progress": progress})
+
+                    if schedules:
+                        first = schedules[0] if isinstance(schedules[0], dict) else {}
+                        created = first.get("start", "N/A").replace("GMT", "UTC")
+                        expires = first.get("end", "N/A").replace("GMT", "UTC")
+                        days_remaining = self._calc_days_remaining(expires)
 
                     assignments_data.append(
                         {
                             "id": assignment_id,
                             "cloud": cloud_name,
                             "description": description,
-                            "created": "N/A",
-                            "expires": "N/A",
+                            "created": created,
+                            "expires": expires,
                             "hosts": hosts,
-                            "days_remaining": "N/A",
+                            "days_remaining": days_remaining,
                         }
                     )
 
@@ -203,6 +271,22 @@ class MyHostsView(ttk.Frame):
             self.shell.perror(f"Failed to fetch assignments: {e}")
 
         return assignments_data
+
+    @staticmethod
+    def _calc_days_remaining(date_str):
+        """Calculate days remaining from a date string (RFC 2822 or ISO format)"""
+        try:
+            try:
+                dt = parsedate_to_datetime(date_str)
+            except Exception:
+                dt = datetime.fromisoformat(date_str)
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            delta = dt - datetime.now(timezone.utc)
+            days = max(0, delta.days)
+            return str(days)
+        except Exception:
+            return "N/A"
 
     def _create_assignment_panel(self, assignment):
         """Create a panel for one assignment"""
@@ -238,24 +322,28 @@ class MyHostsView(ttk.Frame):
         for host in assignment["hosts"]:
             status_icon = self._get_status_icon(host["status"])
             progress_bar = self._get_progress_bar(host["progress"])
+            display_status = host["status"].replace("_", " ").title()
 
             item_id = tree.insert(
                 "",
                 tk.END,
-                values=(host["name"], f"{status_icon} {host['status'].capitalize()}", progress_bar),
+                values=(host["name"], f"{status_icon} {display_status}", progress_bar),
             )
 
             if host["status"] == "active":
                 tree.item(item_id, tags=("active",))
                 tree.tag_configure("active", foreground=self.shell.gui_app.theme_manager.get_color("success"))
-            elif host["status"] == "provisioning":
+            elif host["status"] == "failed":
+                tree.item(item_id, tags=("failed",))
+                tree.tag_configure("failed", foreground=self.shell.gui_app.theme_manager.get_color("error"))
+            elif host["status"] == "scheduled":
+                tree.item(item_id, tags=("scheduled",))
+                tree.tag_configure("scheduled", foreground=self.shell.gui_app.theme_manager.get_color("warning"))
+            else:
                 tree.item(item_id, tags=("provisioning",))
                 tree.tag_configure(
                     "provisioning", foreground=self.shell.gui_app.theme_manager.get_color("provisioning")
                 )
-            elif host["status"] == "failed":
-                tree.item(item_id, tags=("failed",))
-                tree.tag_configure("failed", foreground=self.shell.gui_app.theme_manager.get_color("error"))
 
         tree.pack(fill=tk.BOTH, expand=True)
 
@@ -269,19 +357,30 @@ class MyHostsView(ttk.Frame):
         ).pack(side=tk.LEFT)
 
     def _get_status_icon(self, status):
-        """Get status icon for host"""
         icons = {
             "active": "✓",
-            "provisioning": "⏳",
-            "queued": "○",
             "failed": "✗",
+            "scheduled": "○",
         }
-        return icons.get(status, "○")
+        return icons.get(status, "⏳")
 
     def _get_progress_bar(self, progress):
         """Get text progress bar"""
         if progress == "N/A":
             return "░" * 10 + " N/A"
+        if isinstance(progress, str):
+            if progress.startswith("FAILED"):
+                return "░" * 10 + " FAILED"
+            if "/" in progress:
+                parts = progress.split("/")
+                try:
+                    current, total = int(parts[0]), int(parts[1])
+                    filled = int((current / total) * 10) if total else 0
+                except (ValueError, IndexError):
+                    filled = 0
+                empty = 10 - filled
+                return "█" * filled + "░" * empty + f" {progress}"
+            return "░" * 10 + f" {progress}"
         filled = int(progress / 10)
         empty = 10 - filled
         return "█" * filled + "░" * empty + f" {progress}%"
@@ -340,6 +439,11 @@ class MyHostsView(ttk.Frame):
     def refresh(self):
         """Public method to refresh the view"""
         self._load_assignments()
+
+    def refresh_theme(self):
+        """Update non-ttk widget colors after theme change"""
+        bg = self.shell.gui_app.theme_manager.get_color("bg")
+        self._canvas.configure(bg=bg)
 
     def apply_preferences(self, preferences):
         """Apply updated preferences"""

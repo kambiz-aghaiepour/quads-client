@@ -1,3 +1,5 @@
+import getpass
+
 from tabulate import tabulate
 
 from quads_client.arg_parser import parse_schedule_ssm_args
@@ -5,6 +7,7 @@ from quads_client.error_handler import auto_refresh_on_auth_error, handle_api_er
 from quads_client.utils import (
     extract_assignment_id,
     extract_cloud_name,
+    extract_cloud_number,
     extract_hostname,
     get_username_short,
 )
@@ -41,19 +44,39 @@ class UserCommands:
             self.shell.connection.api.password = password
             result = self.shell.connection.api.register()
 
-            # Check if user already exists
+            # Check for registration disabled (require_auth_provider: true)
+            if isinstance(result, dict) and result.get("status_code") == 403:
+                self.shell.perror("Registration is disabled on this server.")
+                self.shell.poutput("This server requires SSO authentication.")
+                self.shell.poutput("To authenticate with an SSO token:")
+                self.shell.poutput("  1. Visit the QUADS web portal and log in via SSO")
+                self.shell.poutput("  2. Go to Profile > API Tokens and generate a token")
+                self.shell.poutput("  3. Run: token-login")
+                return
+
+            # Check if user already exists - attempt auto-login
             if isinstance(result, dict) and result.get("message"):
                 message = result["message"]
                 if "already exists" in message.lower():
-                    self.shell.pwarning(f"Warning: {message}")
-                    self.shell.pwarning("This email is already registered.")
-                    self.shell.pwarning("If this is your account, use the correct password and try:")
-                    server = self.shell.connection.current_server
-                    self.shell.pwarning(
-                        f"  1. Update config: edit-server {server} --username {email} --password <correct_password>"
-                    )
-                    self.shell.pwarning(f"  2. Reconnect: connect {server}")
-                    self.shell.pwarning("If you forgot your password, contact your QUADS administrator.")
+                    self.shell.poutput("Account already exists - attempting login...")
+                    success, login_msg, role = self.login_programmatic(email, password)
+                    if success:
+                        server_name = self.shell.connection.current_server
+                        if server_name:
+                            self.shell.config.update_server_credentials(server_name, email, password)
+                            self.shell.poutput("OK: Credentials saved to configuration")
+                            self.shell._update_prompt()
+                            self.shell._update_visible_commands()
+                            self.shell.poutput(f"OK: Logged in successfully as {email}")
+                    else:
+                        self.shell.pwarning(f"Login failed: {login_msg}")
+                        server = self.shell.connection.current_server
+                        self.shell.pwarning("If this is your account, verify your password and try:")
+                        self.shell.pwarning(
+                            f"  1. Update config: edit-server {server} username {email} password <correct_password>"
+                        )
+                        self.shell.pwarning(f"  2. Reconnect: connect {server}")
+                        self.shell.pwarning("If you forgot your password, contact your QUADS administrator.")
                     return
 
             # Only save credentials and login for NEW registrations
@@ -166,6 +189,13 @@ class UserCommands:
             self.shell.connection.api.password = password
             result = self.shell.connection.api.register()
 
+            if isinstance(result, dict) and result.get("status_code") == 403:
+                return (
+                    False,
+                    "Registration is disabled. Use the SSO Token tab to authenticate.",
+                    None,
+                )
+
             if isinstance(result, dict) and result.get("message"):
                 if "already exists" in result["message"].lower():
                     return (False, "Email already registered. Please use Login instead.", None)
@@ -175,17 +205,106 @@ class UserCommands:
         except Exception as e:
             return (False, f"Registration failed: {e}", None)
 
+    def token_login_programmatic(self, email, token):
+        """
+        Non-interactive SSO token login for GUI and scripting.
+
+        Args:
+            email: User email (identity anchor)
+            token: qat_-prefixed API token
+
+        Returns:
+            (success: bool, message: str, role: str or None)
+        """
+        if not self.shell.connection or not self.shell.connection.is_connected:
+            return (False, "Not connected to any server", None)
+
+        if not token.startswith("qat_"):
+            return (False, "Invalid token format: must start with qat_", None)
+
+        try:
+            from quads_lib import QuadsApi
+
+            server_name = self.shell.connection.current_server
+            url = self.shell.config.get_server_url(server_name)
+            verify = self.shell.config.get_server_verify(server_name)
+
+            api = QuadsApi(base_url=url, username="", password="", verify=verify, api_token=token)
+
+            # Verify token works with a lightweight API call
+            api.get_version()
+
+            self.shell.connection._api = api
+            self.shell.connection._token = token
+            self.shell.connection._username = email
+            self.shell.connection._registration_mode = False
+
+            # Detect role via /me endpoint
+            role = self.shell.connection._detect_role_from_api()
+            self.shell.connection._user_role = role
+
+            if hasattr(self.shell, "_update_visible_commands"):
+                self.shell._update_visible_commands()
+
+            return (True, "Authenticated via SSO token", role)
+
+        except Exception as e:
+            error_msg = str(e).lower()
+            if "401" in error_msg or "unauthorized" in error_msg:
+                return (False, "Invalid or revoked token", None)
+            return (False, f"Token authentication failed: {e}", None)
+
+    def cmd_token_login(self, args):
+        """Login with an SSO API token. Usage: token-login"""
+        if not self._require_connection():
+            return
+
+        email = input("Email: ").strip()
+        if not email:
+            self.shell.perror("Email is required")
+            return
+
+        token = getpass.getpass("SSO Token: ")
+        if not token:
+            self.shell.perror("Token is required")
+            return
+
+        success, message, role = self.token_login_programmatic(email, token)
+
+        if success:
+            server_name = self.shell.connection.current_server
+            if server_name:
+                self.shell.config.update_server_api_token(server_name, email, token)
+                self.shell.poutput("OK: Token saved to configuration")
+            self.shell._update_prompt()
+            self.shell._update_visible_commands()
+            self.shell.poutput(f"OK: {message} as {email}")
+            if role:
+                self.shell.poutput(f"  Role: {role}")
+        else:
+            self.shell.perror(message)
+
     def cmd_login(self, args):
         """Explicit login. Usage: login"""
         if not self._require_connection():
             return
+
+        # Check if already authenticated via API token
+        if self.shell.connection.is_authenticated:
+            token = getattr(self.shell.connection, "_token", None)
+            if token and token.startswith("qat_"):
+                self.shell.poutput(f"Already authenticated via SSO token as {self.shell.connection.username}")
+                return
 
         # If we already have credentials from API instance, use them
         email = getattr(self.shell.connection.api, "username", None)
         password = getattr(self.shell.connection.api, "password", None)
 
         if not email or not password:
-            self.shell.perror("No credentials configured. Use 'register' or configure credentials in config file.")
+            self.shell.perror("No credentials configured.")
+            self.shell.poutput("To authenticate, use one of:")
+            self.shell.poutput("  token-login              (SSO token)")
+            self.shell.poutput("  register <email> <pass>  (new account)")
             return
 
         success, message, role = self.login_programmatic(email, password)
@@ -319,8 +438,8 @@ class UserCommands:
                     host = schedule.get("host", {})
                     hostname = host.get("name", "Unknown")
                     model = host.get("model", "N/A")
-                    start = schedule.get("start", "N/A")
-                    end = schedule.get("end", "N/A")
+                    start = schedule.get("start", "N/A").replace("GMT", "UTC")
+                    end = schedule.get("end", "N/A").replace("GMT", "UTC")
                     table_data.append([hostname, model, start, end])
 
                 headers = ["Hostname", "Model", "Start", "End"]
@@ -360,6 +479,8 @@ class UserCommands:
 
             self.shell.poutput(f"\n{title}:")
             self.shell.poutput("=" * 80)
+
+            assignments = sorted(assignments, key=lambda a: extract_cloud_number(extract_cloud_name(a)))
 
             table_data = []
             for assignment in assignments:
@@ -517,6 +638,22 @@ class UserCommands:
                     filters["model"] = parsed["model"]
                 if parsed["ram"]:
                     filters["memory__gte"] = parsed["ram"] * 1024
+                if parsed["disk_type"]:
+                    filters["disks.disk_type"] = parsed["disk_type"]
+                if parsed["disk_size"]:
+                    filters["disks.size_gb__gte"] = parsed["disk_size"]
+                if parsed["disk_count"]:
+                    filters["disks.count__gte"] = parsed["disk_count"]
+                if parsed["gpu_vendor"]:
+                    filters["processors.vendor"] = parsed["gpu_vendor"]
+                if parsed["gpu_product"]:
+                    filters["processors.product"] = parsed["gpu_product"]
+                if parsed["interfaces"]:
+                    filters["interfaces.count__gte"] = parsed["interfaces"]
+                if parsed["nic_vendor"]:
+                    filters["interfaces.vendor"] = parsed["nic_vendor"]
+                if parsed["nic_speed"]:
+                    filters["interfaces.speed__gte"] = parsed["nic_speed"]
 
                 available = auto_refresh_on_auth_error(self.shell, self.shell.connection.api.filter_available, filters)
 
@@ -527,8 +664,23 @@ class UserCommands:
                 if not available or len(available) == 0:
                     self.shell.perror("No available hosts found for self-scheduling")
                     self.shell.perror("Hint: Contact admin to configure hosts with can_self_schedule flag")
-                    if parsed["model"] or parsed["ram"]:
-                        self.shell.perror("Or try removing model/ram filters")
+                    has_filters = any(
+                        parsed[k]
+                        for k in [
+                            "model",
+                            "ram",
+                            "disk_type",
+                            "disk_size",
+                            "disk_count",
+                            "gpu_vendor",
+                            "gpu_product",
+                            "interfaces",
+                            "nic_vendor",
+                            "nic_speed",
+                        ]
+                    )
+                    if has_filters:
+                        self.shell.perror("Or try removing hardware filters")
                     return
 
                 if len(available) < parsed["count"]:
@@ -576,6 +728,8 @@ class UserCommands:
                 assignment_data["qinq"] = parsed["qinq"]
             if parsed["vlan"]:
                 assignment_data["vlan"] = parsed["vlan"]
+            if parsed["os"]:
+                assignment_data["ostype"] = parsed["os"]
 
             # Step 1: Create self-assignment (SSM endpoint auto-assigns cloud)
             assignment = auto_refresh_on_auth_error(
@@ -638,6 +792,8 @@ class UserCommands:
         if not self._require_auth():
             return
 
+        from quads_client.progress import format_progress_str
+
         try:
             username = get_username_short(self.shell.connection.username)
             # Get assignments by owner
@@ -649,23 +805,46 @@ class UserCommands:
             self.shell.poutput(f"\nHosts scheduled by {username}:")
             self.shell.poutput("=" * 80)
 
+            move_status_map = {}
+            try:
+                all_moves = self.shell.connection.api.get_all_move_status()
+                if all_moves:
+                    move_status_map = {m["host"]: m for m in all_moves if isinstance(m, dict)}
+            except Exception:
+                pass
+
             # Collect all unique hosts across all assignments
             unique_hosts = {}
             for assignment in assignments:
                 assignment_id = extract_assignment_id(assignment)
                 cloud_name = extract_cloud_name(assignment)
                 description = assignment.get("description", "")
+                is_validated = assignment.get("validated", False)
 
                 # Get current schedules for this assignment
-                schedules = self.shell.connection.api.get_current_schedules({"assignment_id": assignment_id})
+                schedules = self.shell.connection.api.get_schedules({"assignment_id": assignment_id})
                 if schedules:
                     for schedule in schedules:
                         host_name = schedule.get("host", {}).get("name", "Unknown")
-                        end = schedule.get("end", "N/A")
+                        end = schedule.get("end", "N/A").replace("GMT", "UTC")
                         # Use hostname as key to ensure uniqueness
                         if host_name not in unique_hosts:
+                            if is_validated:
+                                status = "Active"
+                                progress = format_progress_str("completed")
+                            else:
+                                move_data = move_status_map.get(host_name)
+                                if move_data:
+                                    move_st = move_data.get("status", "pending")
+                                    progress = format_progress_str(move_st)
+                                    status = move_st.replace("_", " ").title()
+                                else:
+                                    status = "Scheduled"
+                                    progress = "Awaiting move"
+
                             unique_hosts[host_name] = {
-                                "status": "Active",
+                                "status": status,
+                                "progress": progress,
                                 "end": end,
                                 "assignment_id": assignment_id,
                                 "cloud": cloud_name,
@@ -679,9 +858,18 @@ class UserCommands:
             # Display unique hosts in a single table
             table_data = []
             for host_name, info in sorted(unique_hosts.items()):
-                table_data.append([host_name, info["status"], f"Expires: {info['end']}"])
+                table_data.append(
+                    [
+                        host_name,
+                        info["assignment_id"],
+                        info["cloud"],
+                        info["status"],
+                        info["progress"],
+                        f"Expires: {info['end']}",
+                    ]
+                )
 
-            headers = ["Host", "Status", "Schedule"]
+            headers = ["Host", "Assignment", "Cloud", "Status", "Progress", "Schedule"]
             self.shell.poutput(tabulate(table_data, headers=headers, tablefmt="simple"))
             self.shell.poutput(f"\nTotal unique hosts: {len(unique_hosts)}")
 

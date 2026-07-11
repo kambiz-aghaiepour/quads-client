@@ -200,9 +200,9 @@ def test_print_banner_contains_help_text(rich_console):
         panel_content = str(panel_arg.renderable)
 
         # Check for help text
+        assert "add_quads_server" in panel_content.lower()
         assert "help" in panel_content.lower()
         assert "connect" in panel_content.lower()
-        assert "register" in panel_content.lower()
 
 
 def test_print_banner_contains_config_paths(rich_console):
