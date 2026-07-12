@@ -1,4 +1,7 @@
-"""Schedule view for non-admin users"""
+"""Schedule view for self-service scheduling (SSM users)"""
+
+import shlex
+import traceback
 
 from PySide6.QtWidgets import (
     QWidget,
@@ -19,21 +22,28 @@ from PySide6.QtWidgets import (
     QListWidget,
     QAbstractItemView,
     QMessageBox,
+    QCheckBox,
+    QComboBox,
 )
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont
 
-from quads_client.qt6.widgets.date_picker import DatePickerDialog, get_next_sunday_22utc, get_two_weeks_sunday_22utc
+from quads_client.qt6.widgets.base import _WorkerThread
 from quads_client.qt6.widgets.host_filters import HostFilterFrame
+from quads_client.qt6.widgets.dialogs import show_error_dialog
 
 
 class ScheduleView(QWidget):
-    """Schedule a cloud/host assignment (non-admin version)."""
+    """Schedule a cloud/host assignment (SSM / non-admin mode)."""
 
     def __init__(self, parent, shell):
         super().__init__(parent)
         self.shell = shell
+        self._avail_thread = None
+        self._meta_thread = None
         self._available_hosts_loaded = False
+        self._advanced_visible = False
+        self._avail_visible = False
         self._create_ui()
 
     def _create_ui(self):
@@ -58,7 +68,11 @@ class ScheduleView(QWidget):
         sep.setFrameShape(QFrame.Shape.HLine)
         root.addWidget(sep)
 
-        # Scroll area
+        if not self.shell.is_authenticated():
+            self._show_login_prompt(root)
+            return
+
+        # Scrollable content
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.Shape.NoFrame)
@@ -69,392 +83,618 @@ class ScheduleView(QWidget):
         scroll.setWidget(content)
         root.addWidget(scroll, 1)
 
-        # --- Mode selection ---
-        mode_group = QGroupBox("Assignment Mode")
-        mode_layout = QVBoxLayout(mode_group)
+        # "How many hosts?" header
+        how_lbl = QLabel("How many hosts do you need?")
+        hf = how_lbl.font()
+        hf.setBold(True)
+        how_lbl.setFont(hf)
+        cl.addWidget(how_lbl)
+
+        # --- Selection mode group ---
+        mode_box = QGroupBox("Selection Mode")
+        mode_grid = QGridLayout(mode_box)
+        mode_grid.setSpacing(6)
         self._mode_group = QButtonGroup(self)
 
-        self._count_radio = QRadioButton("Reserve a count of matching hosts")
-        self._count_radio.setChecked(True)
-        self._mode_group.addButton(self._count_radio, 0)
-        mode_layout.addWidget(self._count_radio)
+        count_radio = QRadioButton("Specific number of hosts")
+        count_radio.setChecked(True)
+        self._mode_group.addButton(count_radio, 0)
+        mode_grid.addWidget(count_radio, 0, 0)
 
-        self._hosts_radio = QRadioButton("Specify hosts by name")
-        self._mode_group.addButton(self._hosts_radio, 1)
-        mode_layout.addWidget(self._hosts_radio)
-
-        self._file_radio = QRadioButton("Load host list from file")
-        self._mode_group.addButton(self._file_radio, 2)
-        mode_layout.addWidget(self._file_radio)
-
-        self._mode_group.idToggled.connect(self._on_mode_changed)
-        cl.addWidget(mode_group)
-
-        # --- Count mode panel ---
-        self._count_panel = QGroupBox("Count & Filters")
-        count_layout = QGridLayout(self._count_panel)
-        count_layout.setSpacing(8)
-
-        count_layout.addWidget(QLabel("Number of hosts:"), 0, 0, Qt.AlignmentFlag.AlignRight)
+        count_row = QWidget()
+        count_rl = QHBoxLayout(count_row)
+        count_rl.setContentsMargins(0, 0, 0, 0)
+        count_rl.addWidget(QLabel("Count:"))
         self.count_spin = QSpinBox()
         self.count_spin.setRange(1, 500)
         self.count_spin.setValue(1)
-        self.count_spin.setFixedWidth(90)
-        count_layout.addWidget(self.count_spin, 0, 1)
+        self.count_spin.setFixedWidth(80)
+        self.count_spin.valueChanged.connect(self._update_preview)
+        count_rl.addWidget(self.count_spin)
+        count_rl.addStretch()
+        mode_grid.addWidget(count_row, 0, 1)
 
-        # Host filters for count mode
-        self.host_filters = HostFilterFrame(self, self.shell, show_dates=False)
-        count_layout.addWidget(self.host_filters, 1, 0, 1, 2)
-        cl.addWidget(self._count_panel)
+        hosts_radio = QRadioButton("Specific hostnames")
+        self._mode_group.addButton(hosts_radio, 1)
+        mode_grid.addWidget(hosts_radio, 1, 0)
 
-        # --- Hosts mode panel ---
-        self._hosts_panel = QGroupBox("Host Names")
-        hosts_layout = QVBoxLayout(self._hosts_panel)
-        hosts_layout.addWidget(QLabel("Enter hostnames separated by commas or newlines:"))
         self.hosts_entry = QLineEdit()
-        self.hosts_entry.setPlaceholderText("e.g. host01,host02,host03")
-        hosts_layout.addWidget(self.hosts_entry)
+        self.hosts_entry.setPlaceholderText("host01.example.com,host02.example.com")
+        self.hosts_entry.setEnabled(False)
+        self.hosts_entry.textChanged.connect(self._update_preview)
+        mode_grid.addWidget(self.hosts_entry, 1, 1)
 
-        # Available hosts browser (collapsible)
-        self._avail_toggle_btn = QPushButton("▶ Browse Available Hosts")
-        self._avail_toggle_btn.clicked.connect(self._toggle_available_hosts)
-        hosts_layout.addWidget(self._avail_toggle_btn)
+        file_radio = QRadioButton("Host list from file")
+        self._mode_group.addButton(file_radio, 2)
+        mode_grid.addWidget(file_radio, 2, 0)
+
+        file_row = QWidget()
+        file_rl = QHBoxLayout(file_row)
+        file_rl.setContentsMargins(0, 0, 0, 0)
+        self.file_entry = QLineEdit()
+        self.file_entry.setPlaceholderText("Path to file with one hostname per line")
+        self.file_entry.setEnabled(False)
+        self.file_entry.textChanged.connect(self._update_preview)
+        file_rl.addWidget(self.file_entry)
+        self.browse_btn = QPushButton("Browse…")
+        self.browse_btn.setEnabled(False)
+        self.browse_btn.clicked.connect(self._browse_file)
+        file_rl.addWidget(self.browse_btn)
+        mode_grid.addWidget(file_row, 2, 1)
+
+        self._mode_group.idToggled.connect(self._on_mode_changed)
+        cl.addWidget(mode_box)
+
+        # --- Description ---
+        cl.addWidget(QLabel("Description:"))
+        self.desc_entry = QLineEdit()
+        self.desc_entry.setText("Development testing environment")
+        self.desc_entry.textChanged.connect(self._update_preview)
+        cl.addWidget(self.desc_entry)
+
+        # --- Browse available hosts (collapsible) ---
+        self.browse_avail_check = QCheckBox("Browse available hosts ▼")
+        self.browse_avail_check.toggled.connect(self._toggle_browse_available)
+        cl.addWidget(self.browse_avail_check)
 
         self._avail_group = QGroupBox("Available Hosts")
-        avail_inner = QVBoxLayout(self._avail_group)
+        avail_vl = QVBoxLayout(self._avail_group)
+
+        avail_ctrl = QWidget()
+        avail_ctrl_hl = QHBoxLayout(avail_ctrl)
+        avail_ctrl_hl.setContentsMargins(0, 0, 0, 0)
+        load_avail_btn = QPushButton("Load Available Hosts")
+        load_avail_btn.clicked.connect(self._load_available_hosts)
+        avail_ctrl_hl.addWidget(load_avail_btn)
+        self._avail_status = QLabel("")
+        self._avail_status.setStyleSheet("color: gray; font-size: 10px;")
+        avail_ctrl_hl.addWidget(self._avail_status)
+        avail_ctrl_hl.addStretch()
+        avail_vl.addWidget(avail_ctrl)
+
         self._avail_list = QListWidget()
         self._avail_list.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         self._avail_list.setFixedHeight(120)
-        avail_inner.addWidget(self._avail_list)
+        avail_vl.addWidget(self._avail_list)
+
+        avail_btns = QWidget()
+        avail_btns_hl = QHBoxLayout(avail_btns)
+        avail_btns_hl.setContentsMargins(0, 0, 0, 0)
         use_sel_btn = QPushButton("Use Selected Hosts")
         use_sel_btn.clicked.connect(self._use_selected_hosts)
-        avail_inner.addWidget(use_sel_btn)
+        avail_btns_hl.addWidget(use_sel_btn)
+        clear_avail_btn = QPushButton("Clear")
+        clear_avail_btn.clicked.connect(self._avail_list.clear)
+        avail_btns_hl.addWidget(clear_avail_btn)
+        avail_btns_hl.addStretch()
+        avail_vl.addWidget(avail_btns)
+
         self._avail_group.setVisible(False)
-        hosts_layout.addWidget(self._avail_group)
-        self._hosts_panel_visible = False
+        cl.addWidget(self._avail_group)
 
-        self._hosts_panel.setVisible(False)
-        cl.addWidget(self._hosts_panel)
+        # --- Advanced options row ---
+        adv_row = QWidget()
+        adv_rl = QHBoxLayout(adv_row)
+        adv_rl.setContentsMargins(0, 0, 0, 0)
 
-        # --- File mode panel ---
-        self._file_panel = QGroupBox("Host File")
-        file_layout = QHBoxLayout(self._file_panel)
-        self.file_entry = QLineEdit()
-        self.file_entry.setPlaceholderText("Path to file with one hostname per line")
-        file_layout.addWidget(self.file_entry)
-        browse_btn = QPushButton("Browse…")
-        browse_btn.clicked.connect(self._browse_file)
-        file_layout.addWidget(browse_btn)
-        self._file_panel.setVisible(False)
-        cl.addWidget(self._file_panel)
+        self._adv_check = QCheckBox("Show advanced options ▼")
+        self._adv_check.toggled.connect(self._toggle_advanced)
+        adv_rl.addWidget(self._adv_check)
+        adv_rl.addStretch()
 
-        # --- Cloud / Assignment ---
-        cloud_group = QGroupBox("Cloud & Assignment")
-        cloud_layout = QGridLayout(cloud_group)
-        cloud_layout.setSpacing(8)
+        # No Wipe
+        self._nowipe_check = QCheckBox("No Wipe")
+        self._nowipe_check.toggled.connect(self._update_preview)
+        adv_rl.addWidget(self._nowipe_check)
 
-        cloud_layout.addWidget(QLabel("Cloud name:"), 0, 0, Qt.AlignmentFlag.AlignRight)
-        self.cloud_entry = QLineEdit()
-        self.cloud_entry.setPlaceholderText("e.g. cloud08")
-        cloud_layout.addWidget(self.cloud_entry, 0, 1)
+        # VLAN
+        self._vlan_check = QCheckBox("Use VLAN")
+        self._vlan_check.toggled.connect(self._toggle_vlan)
+        adv_rl.addWidget(self._vlan_check)
+        self._vlan_combo = QComboBox()
+        self._vlan_combo.addItem("Select VLAN…")
+        self._vlan_combo.setEnabled(False)
+        self._vlan_combo.setFixedWidth(110)
+        self._vlan_combo.currentIndexChanged.connect(self._update_preview)
+        adv_rl.addWidget(self._vlan_combo)
 
-        cloud_layout.addWidget(QLabel("Description:"), 1, 0, Qt.AlignmentFlag.AlignRight)
-        self.desc_entry = QLineEdit()
-        self.desc_entry.setPlaceholderText("Optional description")
-        cloud_layout.addWidget(self.desc_entry, 1, 1)
-        cl.addWidget(cloud_group)
+        # QinQ
+        self._qinq_check = QCheckBox("Use QinQ")
+        self._qinq_check.toggled.connect(self._toggle_qinq)
+        adv_rl.addWidget(self._qinq_check)
+        self._qinq_combo = QComboBox()
+        self._qinq_combo.addItems(["0", "1"])
+        self._qinq_combo.setEnabled(False)
+        self._qinq_combo.setFixedWidth(55)
+        self._qinq_combo.currentIndexChanged.connect(self._update_preview)
+        adv_rl.addWidget(self._qinq_combo)
 
-        # --- Dates ---
-        dates_group = QGroupBox("Schedule Dates")
-        dates_layout = QGridLayout(dates_group)
-        dates_layout.setSpacing(8)
+        # OS
+        self._os_check = QCheckBox("Use OS")
+        self._os_check.toggled.connect(self._toggle_os)
+        adv_rl.addWidget(self._os_check)
+        self._os_combo = QComboBox()
+        self._os_combo.addItem("Select OS…")
+        self._os_combo.setEnabled(False)
+        self._os_combo.setFixedWidth(160)
+        self._os_combo.currentIndexChanged.connect(self._update_preview)
+        adv_rl.addWidget(self._os_combo)
 
-        dates_layout.addWidget(QLabel("Start date (UTC):"), 0, 0, Qt.AlignmentFlag.AlignRight)
-        self.start_entry = QLineEdit()
-        self.start_entry.setFixedWidth(160)
-        dates_layout.addWidget(self.start_entry, 0, 1)
-        cal_start_btn = QPushButton("📅")
-        cal_start_btn.setFixedWidth(34)
-        cal_start_btn.clicked.connect(self._pick_start_date)
-        dates_layout.addWidget(cal_start_btn, 0, 2)
+        cl.addWidget(adv_row)
 
-        dates_layout.addWidget(QLabel("End date (UTC):"), 1, 0, Qt.AlignmentFlag.AlignRight)
-        self.end_entry = QLineEdit()
-        self.end_entry.setFixedWidth(160)
-        dates_layout.addWidget(self.end_entry, 1, 1)
-        cal_end_btn = QPushButton("📅")
-        cal_end_btn.setFixedWidth(34)
-        cal_end_btn.clicked.connect(self._pick_end_date)
-        dates_layout.addWidget(cal_end_btn, 1, 2)
+        # --- Collapsible advanced frame (host filters) ---
+        self._adv_frame = QGroupBox("Advanced Options")
+        adv_fl = QVBoxLayout(self._adv_frame)
+        self.host_filters = HostFilterFrame(self._adv_frame, self.shell, show_dates=False)
+        adv_fl.addWidget(self.host_filters)
+        self._adv_frame.setVisible(False)
+        cl.addWidget(self._adv_frame)
 
-        now_tip = QLabel("Dates use YYYY-MM-DD HH:MM format in UTC")
-        now_tip.setStyleSheet("color: gray; font-size: 10px;")
-        dates_layout.addWidget(now_tip, 2, 0, 1, 3)
-
-        # Set default dates
-        start_default = get_next_sunday_22utc()
-        self.start_entry.setText(start_default.strftime("%Y-%m-%d %H:%M"))
-        end_default = get_two_weeks_sunday_22utc(start_default)
-        self.end_entry.setText(end_default.strftime("%Y-%m-%d %H:%M"))
-
-        cl.addWidget(dates_group)
-
-        # --- Action buttons ---
-        btn_row = QWidget()
-        brl = QHBoxLayout(btn_row)
-        brl.setContentsMargins(0, 0, 0, 0)
-        preview_btn = QPushButton("Preview")
-        preview_btn.clicked.connect(self._preview_schedule)
-        brl.addWidget(preview_btn)
-        submit_btn = QPushButton("Submit Schedule")
-        submit_btn.clicked.connect(self._submit_schedule)
-        brl.addWidget(submit_btn)
-        clear_btn = QPushButton("Clear")
-        clear_btn.clicked.connect(self._clear_form)
-        brl.addWidget(clear_btn)
-        brl.addStretch()
-        cl.addWidget(btn_row)
-
-        # --- Preview / Result ---
-        result_group = QGroupBox("Result")
-        result_layout = QVBoxLayout(result_group)
-        self.result_text = QTextEdit()
-        self.result_text.setReadOnly(True)
+        # --- Preview ---
+        preview_box = QGroupBox("Preview")
+        preview_vl = QVBoxLayout(preview_box)
+        self._preview_text = QTextEdit()
+        self._preview_text.setReadOnly(True)
+        self._preview_text.setFixedHeight(120)
         mono = QFont("Monospace")
         mono.setStyleHint(QFont.StyleHint.TypeWriter)
-        self.result_text.setFont(mono)
-        self.result_text.setMinimumHeight(120)
-        result_layout.addWidget(self.result_text)
-        cl.addWidget(result_group)
+        self._preview_text.setFont(mono)
+        preview_vl.addWidget(self._preview_text)
+        cl.addWidget(preview_box)
+
+        # --- Result (hidden until scheduling completes) ---
+        self._result_box = QGroupBox("Scheduling Result")
+        result_vl = QVBoxLayout(self._result_box)
+        self._result_text = QTextEdit()
+        self._result_text.setReadOnly(True)
+        self._result_text.setFixedHeight(100)
+        self._result_text.setFont(mono)
+        result_vl.addWidget(self._result_text)
+        self._result_box.setVisible(False)
+        cl.addWidget(self._result_box)
+
+        # --- Buttons ---
+        btn_row = QWidget()
+        btn_rl = QHBoxLayout(btn_row)
+        btn_rl.setContentsMargins(0, 0, 0, 0)
+        btn_rl.addStretch()
+        cancel_btn = QPushButton("Cancel")
+        cancel_btn.clicked.connect(self._cancel)
+        btn_rl.addWidget(cancel_btn)
+        schedule_btn = QPushButton("Schedule Now")
+        schedule_btn.setDefault(True)
+        schedule_btn.clicked.connect(self._schedule)
+        btn_rl.addWidget(schedule_btn)
+        cl.addWidget(btn_row)
 
         cl.addStretch()
+
+        self._update_preview()
+        self._load_metadata_async()
+
+    # ------------------------------------------------------------------ helpers
+
+    def _show_login_prompt(self, root):
+        center = QWidget()
+        cl = QVBoxLayout(center)
+        cl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        cl.addWidget(QLabel("Please login to schedule hosts"))
+        login_btn = QPushButton("Login")
+        login_btn.clicked.connect(self._auto_login)
+        cl.addWidget(login_btn)
+        root.addWidget(center, 1)
+
+    def _auto_login(self):
+        target = self.shell.get_auto_login_server()
+        if target:
+            success, error = self.shell.connect_to_server(target)
+            if success:
+                self.refresh()
+            else:
+                show_error_dialog(self, "Login Failed", f"Failed to connect to {target}", error or "")
+        else:
+            self.shell.gui_app._show_servers_view()
+
+    def _load_metadata_async(self):
+        def fetch():
+            vlans = self.shell.get_available_vlans()
+            os_list = self.shell.get_available_os()
+            return vlans, os_list
+
+        def apply(result):
+            vlans, os_list = result
+            if vlans:
+                self._vlan_combo.clear()
+                self._vlan_combo.addItem("Select VLAN…")
+                self._vlan_combo.addItems(vlans)
+            if os_list:
+                self._os_combo.clear()
+                self._os_combo.addItem("Select OS…")
+                self._os_combo.addItems(os_list)
+
+        self._meta_thread = _WorkerThread(fetch)
+        self._meta_thread.result_ready.connect(apply)
+        self._meta_thread.start()
+
+        if hasattr(self, "host_filters"):
+            self.host_filters.populate_metadata_async()
+
+    # ------------------------------------------------------------------ mode
 
     def _on_mode_changed(self, button_id, checked):
         if not checked:
             return
         mode = self._mode_group.checkedId()
-        self._count_panel.setVisible(mode == 0)
-        self._hosts_panel.setVisible(mode == 1)
-        self._file_panel.setVisible(mode == 2)
+        self.count_spin.setEnabled(mode == 0)
+        self.hosts_entry.setEnabled(mode == 1)
+        self.file_entry.setEnabled(mode == 2)
+        self.browse_btn.setEnabled(mode == 2)
+        self._update_preview()
 
-    def _toggle_available_hosts(self):
-        self._hosts_panel_visible = not self._hosts_panel_visible
-        self._avail_group.setVisible(self._hosts_panel_visible)
-        self._avail_toggle_btn.setText(
-            "▼ Browse Available Hosts" if self._hosts_panel_visible else "▶ Browse Available Hosts"
-        )
-        if self._hosts_panel_visible and not self._available_hosts_loaded:
-            self._load_available_hosts()
+    # ------------------------------------------------------------------ toggles
+
+    def _toggle_browse_available(self, checked):
+        self._avail_group.setVisible(checked)
+
+    def _toggle_advanced(self, checked):
+        self._advanced_visible = checked
+        self._adv_frame.setVisible(checked)
+        self._update_preview()
+
+    def _toggle_vlan(self, checked):
+        self._vlan_combo.setEnabled(checked)
+        if not checked:
+            self._vlan_combo.setCurrentIndex(0)
+        self._update_preview()
+
+    def _toggle_qinq(self, checked):
+        self._qinq_combo.setEnabled(checked)
+        self._update_preview()
+
+    def _toggle_os(self, checked):
+        self._os_combo.setEnabled(checked)
+        if not checked:
+            self._os_combo.setCurrentIndex(0)
+        self._update_preview()
+
+    # ------------------------------------------------------------------ available hosts
 
     def _load_available_hosts(self):
-        self._avail_list.clear()
-        self._avail_list.addItem("Loading…")
-        try:
-            from quads_client.qt6.widgets.base import _WorkerThread
-
-            def fetch():
-                return self.shell.host_commands.get_hosts_programmatic(
-                    filter_params={"retired": False, "broken": False}
-                )
-
-            thread = _WorkerThread(fetch)
-            thread.result_ready.connect(self._populate_avail_list)
-            thread.error_occurred.connect(lambda e: self._avail_list.clear())
-            thread.start()
-            self._avail_thread = thread
-        except Exception:
-            self._avail_list.clear()
-
-    def _populate_avail_list(self, hosts):
-        self._avail_list.clear()
-        self._available_hosts_loaded = True
-        if not hosts:
-            self._avail_list.addItem("No hosts found")
+        if not self.shell.is_authenticated():
+            self._avail_status.setText("Not connected")
             return
-        for host in sorted(hosts, key=lambda h: h.get("name", "")):
-            self._avail_list.addItem(host.get("name", ""))
+
+        self._avail_status.setText("Loading…")
+        self._avail_list.clear()
+
+        filters = {}
+        if self._advanced_visible and hasattr(self, "host_filters"):
+            filters = self.host_filters.get_filters()
+
+        def fetch():
+            return self.shell.get_available_hosts_data(**filters)
+
+        def on_loaded(hosts):
+            self._avail_list.clear()
+            if not hosts:
+                self._avail_list.addItem("No available hosts found")
+                self._avail_status.setText("No hosts found")
+                return
+            for host in hosts:
+                self._avail_list.addItem(host.get("name", ""))
+            self._avail_status.setText(f"Loaded {len(hosts)} host(s)")
+            self._available_hosts_loaded = True
+
+        def on_error(exc):
+            self._avail_status.setText(f"Error: {exc}")
+
+        self._avail_thread = _WorkerThread(fetch)
+        self._avail_thread.result_ready.connect(on_loaded)
+        self._avail_thread.error_occurred.connect(on_error)
+        self._avail_thread.start()
 
     def _use_selected_hosts(self):
-        selected_items = self._avail_list.selectedItems()
-        if not selected_items:
+        selected = [item.text() for item in self._avail_list.selectedItems() if "." in item.text()]
+        if not selected:
+            QMessageBox.warning(self, "No Selection", "Please select hosts from the list")
             return
-        hostnames = [item.text() for item in selected_items]
+
         current = self.hosts_entry.text().strip()
         if current:
             existing = [h.strip() for h in current.replace("\n", ",").split(",") if h.strip()]
-            for h in hostnames:
+            for h in selected:
                 if h not in existing:
                     existing.append(h)
             self.hosts_entry.setText(",".join(existing))
         else:
-            self.hosts_entry.setText(",".join(hostnames))
+            self.hosts_entry.setText(",".join(selected))
 
-    def prefill_hosts(self, hostnames):
-        """Called by available.py to prefill host names."""
-        if not hostnames:
-            return
-        self._hosts_radio.setChecked(True)
-        self.hosts_entry.setText(",".join(hostnames))
+        # Switch to "specific hostnames" mode
+        self._mode_group.button(1).setChecked(True)
+        self._update_preview()
+
+    # ------------------------------------------------------------------ file
 
     def _browse_file(self):
-        path, _ = QFileDialog.getOpenFileName(self, "Select Host File", "", "Text files (*.txt);;All files (*)")
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Select Host List File", "", "Text files (*.txt);;All files (*)"
+        )
         if path:
             self.file_entry.setText(path)
 
-    def _pick_start_date(self):
-        picker = DatePickerDialog(self, "Select Start Date", self.start_entry.text() or None)
-        picker.exec()
-        result = picker.get_result()
-        if result:
-            self.start_entry.setText(result)
+    # ------------------------------------------------------------------ preview
 
-    def _pick_end_date(self):
-        range_start = self.start_entry.text() or None
-        picker = DatePickerDialog(self, "Select End Date", self.end_entry.text() or None, range_start=range_start)
-        picker.exec()
-        result = picker.get_result()
-        if result:
-            self.end_entry.setText(result)
-
-    def _build_params(self):
-        """Collect form values into dict for API call. Returns (params, error_string)."""
+    def _update_preview(self):
+        if not hasattr(self, "_preview_text"):
+            return
         mode = self._mode_group.checkedId()
-        cloud = self.cloud_entry.text().strip()
-        start = self.start_entry.text().strip()
-        end = self.end_entry.text().strip()
-
-        if not cloud:
-            return None, "Cloud name is required"
-        if not start:
-            return None, "Start date is required"
-        if not end:
-            return None, "End date is required"
-
-        params = {
-            "cloud": cloud,
-            "description": self.desc_entry.text().strip(),
-            "start": start,
-            "end": end,
-        }
+        lines = []
 
         if mode == 0:
-            params["count"] = self.count_spin.value()
-            filters = self.host_filters.get_filters()
-            params.update(filters)
+            lines.append(f"• {self.count_spin.value()} hosts will be automatically selected")
         elif mode == 1:
             raw = self.hosts_entry.text().strip()
-            if not raw:
-                return None, "Enter at least one hostname"
-            hosts = [h.strip() for h in raw.replace("\n", ",").split(",") if h.strip()]
-            params["hosts"] = hosts
-        elif mode == 2:
-            file_path = self.file_entry.text().strip()
-            if not file_path:
-                return None, "Select a file"
+            host_list = [h.strip() for h in raw.split(",") if h.strip()] if raw else []
+            lines.append(f"• {len(host_list)} specific host(s)")
+        else:
+            fp = self.file_entry.text().strip()
+            lines.append(f"• Hosts from file: {fp or 'Not selected'}")
+
+        lines.append("• Cloud will be auto-assigned")
+        lines.append("• Duration: 5 days or until Sunday 21:00 UTC")
+        lines.append("• Assignment will be activated immediately")
+
+        if self._vlan_check.isChecked():
+            vlan = self._vlan_combo.currentText()
+            if vlan and vlan != "Select VLAN…":
+                lines.append(f"• VLAN: {vlan}")
+
+        if self._qinq_check.isChecked():
+            lines.append(f"• QinQ: {self._qinq_combo.currentText()}")
+
+        if self._os_check.isChecked():
+            os_val = self._os_combo.currentText()
+            if os_val and os_val != "Select OS…":
+                lines.append(f"• OS: {os_val}")
+
+        if self._nowipe_check.isChecked():
+            lines.append("• No wipe (data will be preserved)")
+
+        if self._advanced_visible and hasattr(self, "host_filters"):
+            af = self.host_filters.get_filters()
+            if "model" in af:
+                lines.append(f"• Filter: Model {af['model']}")
+            if "memory__gte" in af:
+                lines.append(f"• Filter: RAM >= {af['memory__gte'] // 1024} GB")
+            if "disks.disk_type" in af:
+                lines.append(f"• Filter: Disk type {af['disks.disk_type']}")
+            if "disks.size_gb__gte" in af:
+                lines.append(f"• Filter: Disk size >= {af['disks.size_gb__gte']} GB")
+            if "disks.count__gte" in af:
+                lines.append(f"• Filter: Disk count >= {af['disks.count__gte']}")
+            if "interfaces.vendor" in af:
+                lines.append(f"• Filter: NIC vendor {af['interfaces.vendor']}")
+            if "interfaces.speed__gte" in af:
+                lines.append(f"• Filter: NIC speed >= {af['interfaces.speed__gte']} Gbps")
+
+        self._preview_text.setPlainText("\n".join(lines))
+
+    # ------------------------------------------------------------------ schedule
+
+    def _validate_hostnames(self, hostnames):
+        errors = []
+        for hostname in hostnames:
+            hostname = hostname.strip()
+            if not hostname:
+                continue
             try:
-                with open(file_path) as fh:
-                    hosts = [line.strip() for line in fh if line.strip()]
-                if not hosts:
-                    return None, "File is empty"
-                params["hosts"] = hosts
-            except OSError as e:
-                return None, f"Could not read file: {e}"
+                host = self.shell.connection.api.get_host(hostname)
+                if not host:
+                    errors.append(f"{hostname}: Host not found")
+                    continue
+                if host.get("broken"):
+                    errors.append(f"{hostname}: Host is marked as broken")
+                    continue
+                if host.get("retired"):
+                    errors.append(f"{hostname}: Host is retired")
+                    continue
+                if not host.get("can_self_schedule"):
+                    errors.append(f"{hostname}: Not enabled for self-scheduling")
+            except Exception as exc:
+                errors.append(f"{hostname}: Error checking host ({exc})")
+        return len(errors) == 0, errors
 
-        return params, None
-
-    def _preview_schedule(self):
-        params, error = self._build_params()
-        if error:
-            QMessageBox.critical(self, "Form Error", error)
-            return
-
-        self.result_text.clear()
-        self.result_text.setPlainText("Checking availability…")
-
-        try:
-            if "hosts" in params:
-                lines = ["Hosts to schedule:"]
-                for h in params["hosts"]:
-                    lines.append(f"  {h}")
-                lines.append(f"\nCloud: {params['cloud']}")
-                lines.append(f"Start: {params['start']}")
-                lines.append(f"End:   {params['end']}")
-                if params.get("description"):
-                    lines.append(f"Description: {params['description']}")
-                preview_text = "\n".join(lines)
-            else:
-                result = self.shell.host_commands.get_available_hosts_programmatic(
-                    start=params.get("start"),
-                    end=params.get("end"),
-                    filter_params={
-                        k: v for k, v in params.items() if k not in ("cloud", "description", "start", "end", "count")
-                    },
-                )
-                count = params.get("count", 1)
-                available = result or []
-                avail_names = [h.get("name", "") for h in available[:count]]
-                lines = [f"Would schedule {min(count, len(available))} of {len(available)} available hosts:"]
-                for n in avail_names:
-                    lines.append(f"  {n}")
-                if len(available) < count:
-                    lines.append(f"\n⚠ Only {len(available)} hosts match (requested {count})")
-                lines.append(f"\nCloud: {params['cloud']}")
-                lines.append(f"Start: {params['start']}")
-                lines.append(f"End:   {params['end']}")
-                preview_text = "\n".join(lines)
-            self.result_text.setPlainText(preview_text)
-        except Exception as exc:
-            import traceback
-
-            self.result_text.setPlainText(f"Preview error:\n{exc}\n\n{traceback.format_exc()}")
-
-    def _submit_schedule(self):
+    def _schedule(self):
         if not self.shell.is_authenticated():
             QMessageBox.critical(self, "Not Authenticated", "Please connect and login first")
             return
 
-        params, error = self._build_params()
-        if error:
-            QMessageBox.critical(self, "Form Error", error)
+        description = self.desc_entry.text().strip()
+        if not description:
+            QMessageBox.critical(self, "Error", "Description is required")
             return
 
-        result = QMessageBox.question(
-            self,
-            "Confirm",
-            f"Submit schedule for cloud '{params['cloud']}'?",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No,
-        )
-        if result != QMessageBox.StandardButton.Yes:
-            return
+        mode = self._mode_group.checkedId()
+        args_parts = []
 
-        self.result_text.clear()
-        self.result_text.setPlainText("Submitting schedule…")
+        if mode == 0:
+            # Count mode
+            args_parts.append(str(self.count_spin.value()))
+
+        elif mode == 1:
+            # Specific hostnames
+            hosts_raw = self.hosts_entry.text().strip()
+            if not hosts_raw:
+                QMessageBox.critical(self, "Error", "Hostnames are required")
+                return
+            hostname_list = [h.strip() for h in hosts_raw.split(",") if h.strip()]
+            is_valid, errors = self._validate_hostnames(hostname_list)
+            if not is_valid:
+                msg = "The following hostnames are invalid:\n\n"
+                msg += "\n".join(f"  • {e}" for e in errors)
+                QMessageBox.critical(self, "Invalid Hostnames", msg)
+                return
+            args_parts.append(",".join(hostname_list))
+
+        else:
+            # From file
+            file_path = self.file_entry.text().strip()
+            if not file_path:
+                QMessageBox.critical(self, "Error", "Please select a host list file")
+                return
+            try:
+                with open(file_path) as fh:
+                    hostname_list = [ln.strip() for ln in fh if ln.strip()]
+                if not hostname_list:
+                    QMessageBox.critical(self, "Error", f"No hostnames found in file: {file_path}")
+                    return
+                is_valid, errors = self._validate_hostnames(hostname_list)
+                if not is_valid:
+                    msg = f"The following hostnames in {file_path} are invalid:\n\n"
+                    msg += "\n".join(f"  • {e}" for e in errors)
+                    QMessageBox.critical(self, "Invalid Hostnames", msg)
+                    return
+            except FileNotFoundError:
+                QMessageBox.critical(self, "Error", f"File not found: {file_path}")
+                return
+            except Exception as exc:
+                QMessageBox.critical(self, "Error", f"Failed to read file: {exc}")
+                return
+            args_parts += ["host-list", file_path]
+
+        args_parts += ["description", description]
+
+        if self._vlan_check.isChecked():
+            vlan = self._vlan_combo.currentText()
+            if vlan and vlan != "Select VLAN…" and vlan != "No free VLANs available":
+                args_parts += ["vlan", vlan]
+
+        if self._qinq_check.isChecked():
+            args_parts += ["qinq", self._qinq_combo.currentText()]
+
+        if self._os_check.isChecked():
+            os_val = self._os_combo.currentText()
+            if os_val and os_val != "Select OS…" and os_val != "No OS options available":
+                args_parts += ["os", os_val]
+
+        if self._nowipe_check.isChecked():
+            args_parts.append("nowipe")
+
+        if self._advanced_visible and hasattr(self, "host_filters"):
+            af = self.host_filters.get_filters()
+            if "model" in af:
+                args_parts += ["model", af["model"]]
+            if "memory__gte" in af:
+                args_parts += ["ram", str(af["memory__gte"] // 1024)]
+            if "disks.disk_type" in af:
+                args_parts += ["disk-type", af["disks.disk_type"]]
+            if "disks.size_gb__gte" in af:
+                args_parts += ["disk-size", str(af["disks.size_gb__gte"])]
+            if "disks.count__gte" in af:
+                args_parts += ["disk-count", str(af["disks.count__gte"])]
+            if "interfaces.vendor" in af:
+                args_parts += ["nic-vendor", af["interfaces.vendor"]]
+            if "interfaces.speed__gte" in af:
+                args_parts += ["nic-speed", str(af["interfaces.speed__gte"])]
+
+        args = shlex.join(args_parts)
 
         try:
-            success, message, details = self.shell.schedule_commands.create_schedule_programmatic(**params)
-            if success:
-                self.result_text.setPlainText(f"✓ Schedule created successfully\n\n{message or ''}")
+            self.shell._capture_output = True
+            self.shell._captured_messages = []
+
+            self.shell.user_commands.cmd_schedule(args)
+
+            if self.shell._captured_messages:
+                result_lines = [msg for _, msg in self.shell._captured_messages]
+                self._result_text.setPlainText("\n".join(result_lines))
+                self._result_box.setVisible(True)
+
+            errors = [msg for level, msg in self.shell._captured_messages if level == "error"]
+            if errors:
+                QMessageBox.critical(self, "Scheduling Failed", "\n".join(errors))
             else:
-                self.result_text.setPlainText(f"✗ Schedule failed:\n\n{message or ''}")
+                QMessageBox.information(
+                    self,
+                    "Success",
+                    "Hosts scheduled successfully!\n\n"
+                    "View your assignments in the 'My Hosts' or 'Assignments' tab.",
+                )
         except Exception as exc:
-            import traceback
+            show_error_dialog(self, "Scheduling Failed", str(exc), traceback.format_exc())
+        finally:
+            self.shell._capture_output = False
 
-            self.result_text.setPlainText(f"Error:\n{exc}\n\n{traceback.format_exc()}")
+    # ------------------------------------------------------------------ cancel / reset
 
-    def _clear_form(self):
-        self.cloud_entry.clear()
-        self.desc_entry.clear()
+    def _cancel(self):
+        self._reset_form()
+
+    def _reset_form(self):
+        self._mode_group.button(0).setChecked(True)
+        self.count_spin.setValue(1)
         self.hosts_entry.clear()
         self.file_entry.clear()
-        self.count_spin.setValue(1)
-        self.host_filters.clear_filters()
-        self.result_text.clear()
-        start_default = get_next_sunday_22utc()
-        self.start_entry.setText(start_default.strftime("%Y-%m-%d %H:%M"))
-        end_default = get_two_weeks_sunday_22utc(start_default)
-        self.end_entry.setText(end_default.strftime("%Y-%m-%d %H:%M"))
-        self._count_radio.setChecked(True)
+        self.desc_entry.setText("Development testing environment")
+        self._nowipe_check.setChecked(False)
+        self._vlan_check.setChecked(False)
+        self._vlan_combo.setCurrentIndex(0)
+        self._vlan_combo.setEnabled(False)
+        self._qinq_check.setChecked(False)
+        self._qinq_combo.setCurrentIndex(0)
+        self._qinq_combo.setEnabled(False)
+        self._os_check.setChecked(False)
+        self._os_combo.setCurrentIndex(0)
+        self._os_combo.setEnabled(False)
+        self._adv_check.setChecked(False)
+        self.browse_avail_check.setChecked(False)
+        if hasattr(self, "host_filters"):
+            self.host_filters.clear_filters()
+        self._result_box.setVisible(False)
+        self._update_preview()
+
+    # ------------------------------------------------------------------ refresh
 
     def refresh(self):
-        pass
+        if not self.shell.is_authenticated():
+            # Rebuild to show login prompt
+            for child in self.children():
+                if isinstance(child, QWidget):
+                    child.deleteLater()
+            QVBoxLayout(self)
+            self._create_ui()
+        elif hasattr(self, "_preview_text"):
+            self._update_preview()
+        else:
+            for child in self.children():
+                if isinstance(child, QWidget):
+                    child.deleteLater()
+            self._create_ui()
+
+    def prefill_hosts(self, hostnames):
+        """Called by available.py to switch to hosts mode and prefill names."""
+        if not hostnames or not hasattr(self, "hosts_entry"):
+            return
+        self._mode_group.button(1).setChecked(True)
+        self.hosts_entry.setText(",".join(hostnames))
+        self._update_preview()
