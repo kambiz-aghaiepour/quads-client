@@ -9,7 +9,7 @@ def main():
         from PySide6.QtWidgets import QApplication as _QApplication  # noqa: F401
     except ImportError:
         print("ERROR: GUI dependencies not available.")
-        print("\npython3-pyside6 is required for the GUI but is not installed.")
+        print("\npython3-pyside6 is required for the Qt GUI but is not installed.")
         print("\nOn Linux (Fedora/RHEL):")
         print("  sudo dnf install python3-pyside6")
         print("\nOn macOS (in a venv):")
