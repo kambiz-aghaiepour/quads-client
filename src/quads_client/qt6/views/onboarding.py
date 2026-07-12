@@ -13,12 +13,10 @@ from PySide6.QtWidgets import (
     QFrame,
     QWidget,
     QStackedWidget,
-    QScrollArea,
     QMessageBox,
     QGroupBox,
 )
 from PySide6.QtCore import Qt, QTimer
-from PySide6.QtGui import QFont
 
 
 class OnboardingWizard(QDialog):
@@ -447,9 +445,9 @@ class OnboardingWizard(QDialog):
             self.ob_server_for_auth_lbl.setText(f"Authenticate to server '{name}':")
 
         try:
-            conn_success, err = self.shell.connect_to_server(name)
+            self.shell.connect_to_server(name)
         except Exception:
-            conn_success = False
+            pass
 
         return True
 
@@ -465,11 +463,10 @@ class OnboardingWizard(QDialog):
         self.ob_login_status.setStyleSheet("")
 
         try:
-            success, message, role = self.shell.user_commands.login_programmatic(email, password)
+            success, message, _ = self.shell.user_commands.login_programmatic(email, password)
         except Exception as e:
             success = False
             message = str(e)
-            role = None
 
         if success:
             if self._server_name:
@@ -512,11 +509,10 @@ class OnboardingWizard(QDialog):
         self.ob_reg_status.setStyleSheet("")
 
         try:
-            success, message, role = self.shell.user_commands.register_programmatic(email, password)
+            success, message, _ = self.shell.user_commands.register_programmatic(email, password)
         except Exception as e:
             success = False
             message = str(e)
-            role = None
 
         if success:
             if self._server_name:

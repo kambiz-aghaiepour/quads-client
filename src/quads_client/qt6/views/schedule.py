@@ -19,14 +19,12 @@ from PySide6.QtWidgets import (
     QListWidget,
     QAbstractItemView,
     QMessageBox,
-    QSizePolicy,
 )
-from PySide6.QtCore import Qt, QTimer
+from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont
 
 from quads_client.qt6.widgets.date_picker import DatePickerDialog, get_next_sunday_22utc, get_two_weeks_sunday_22utc
 from quads_client.qt6.widgets.host_filters import HostFilterFrame
-from quads_client.qt6.widgets.dialogs import show_error_dialog
 
 
 class ScheduleView(QWidget):

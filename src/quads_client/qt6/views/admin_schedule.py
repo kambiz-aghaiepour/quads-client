@@ -12,17 +12,13 @@ from PySide6.QtWidgets import (
     QGroupBox,
     QFrame,
     QDialog,
-    QComboBox,
     QRadioButton,
     QButtonGroup,
     QSpinBox,
     QCheckBox,
-    QTextEdit,
     QMessageBox,
-    QAbstractItemView,
 )
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QBrush, QColor, QFont
 
 from quads_client.qt6.widgets.base import BaseAdminView, FormDialog, ScrolledTreeview
 from quads_client.qt6.widgets.date_picker import DatePickerDialog, get_next_sunday_22utc, get_two_weeks_sunday_22utc
@@ -117,7 +113,7 @@ class AdminScheduleView(BaseAdminView):
     def _populate_tree(self, schedules):
         self.tree.clear()
         if not schedules:
-            self.update_status(f"No schedules found")
+            self.update_status("No schedules found")
             return
         for sched in schedules:
             host = sched.get("host", {})

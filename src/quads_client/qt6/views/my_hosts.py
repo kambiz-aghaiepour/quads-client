@@ -13,7 +13,6 @@ from PySide6.QtWidgets import (
     QTreeWidgetItem,
     QMessageBox,
     QFrame,
-    QSizePolicy,
 )
 from PySide6.QtCore import Qt, QTimer, QThread, Signal
 from PySide6.QtGui import QColor, QBrush

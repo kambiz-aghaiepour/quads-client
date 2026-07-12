@@ -20,9 +20,8 @@ from PySide6.QtWidgets import (
     QTreeWidget,
     QTreeWidgetItem,
     QMessageBox,
-    QAbstractItemView,
 )
-from PySide6.QtCore import Qt, QThread, Signal
+from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont
 
 from quads_client.qt6.widgets.dialogs import show_error_dialog

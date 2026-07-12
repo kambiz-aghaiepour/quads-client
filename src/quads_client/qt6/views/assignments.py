@@ -6,7 +6,6 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QGridLayout,
     QLabel,
-    QPushButton,
     QSpinBox,
     QRadioButton,
     QButtonGroup,
@@ -100,7 +99,7 @@ class AssignmentsView(BaseAdminView):
             return
         self.safe_execute(
             lambda: self.shell.user_commands.cmd_terminate(str(assignment_id)),
-            f"Assignment #{assignment_id} terminated\n\nNote: It may take a few moments for the termination to complete.",
+            f"Assignment #{assignment_id} terminated\n\nNote: It may take a few moments for the termination to complete.",  # noqa: E501
             "Termination Failed",
             self._load_assignments,
         )
@@ -210,7 +209,7 @@ class AssignmentsView(BaseAdminView):
         if mode_id == 2:  # now
             if not self.confirm_action(
                 "Confirm Shrink",
-                f"End assignment #{assignment_id} ({cloud_name}) NOW?\n\nThis will terminate the assignment immediately.",
+                f"End assignment #{assignment_id} ({cloud_name}) NOW?\n\nThis will terminate the assignment immediately.",  # noqa: E501
             ):
                 return
             self.safe_execute(

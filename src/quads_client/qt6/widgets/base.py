@@ -13,10 +13,7 @@ from PySide6.QtWidgets import (
     QAbstractItemView,
     QMessageBox,
     QDialog,
-    QGridLayout,
     QLineEdit,
-    QHeaderView,
-    QFrame,
 )
 from PySide6.QtCore import Qt, QThread, Signal
 from PySide6.QtGui import QKeySequence, QShortcut

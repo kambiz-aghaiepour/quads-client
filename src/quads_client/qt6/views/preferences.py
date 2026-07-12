@@ -13,7 +13,6 @@ from PySide6.QtWidgets import (
     QSpinBox,
     QCheckBox,
     QComboBox,
-    QDialogButtonBox,
     QWidget,
 )
 from PySide6.QtCore import Qt

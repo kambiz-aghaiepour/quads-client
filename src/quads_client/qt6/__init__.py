@@ -6,7 +6,7 @@ import sys
 def main():
     """Main entry point for quads-client-gui"""
     try:
-        from PySide6.QtWidgets import QApplication  # noqa: F401
+        from PySide6.QtWidgets import QApplication as _QApplication  # noqa: F401
     except ImportError:
         print("ERROR: GUI dependencies not available.")
         print("\npython3-pyside6 is required for the GUI but is not installed.")
