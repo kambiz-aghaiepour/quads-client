@@ -1,5 +1,8 @@
 """Admin schedule management view"""
 
+import shlex
+import traceback
+
 from PySide6.QtWidgets import (
     QWidget,
     QVBoxLayout,
@@ -26,7 +29,7 @@ from quads_client.qt6.widgets.dialogs import show_error_dialog
 
 
 class AdminScheduleView(BaseAdminView):
-    """Admin view for managing host schedules."""
+    """Admin view for managing host assignments and schedules."""
 
     def __init__(self, parent, shell):
         super().__init__(parent, shell, "Schedule Management", requires_admin=True)
@@ -45,15 +48,9 @@ class AdminScheduleView(BaseAdminView):
         filter_bar = QWidget()
         fbl = QHBoxLayout(filter_bar)
         fbl.setContentsMargins(0, 0, 0, 0)
-        fbl.addWidget(QLabel("Search host:"))
-        self.host_filter_entry = QLineEdit()
-        self.host_filter_entry.setFixedWidth(200)
-        self.host_filter_entry.setPlaceholderText("hostname or partial")
-        fbl.addWidget(self.host_filter_entry)
-        fbl.addSpacing(10)
         fbl.addWidget(QLabel("Cloud:"))
         self.cloud_filter_entry = QLineEdit()
-        self.cloud_filter_entry.setFixedWidth(120)
+        self.cloud_filter_entry.setFixedWidth(160)
         self.cloud_filter_entry.setPlaceholderText("cloud name")
         fbl.addWidget(self.cloud_filter_entry)
         filter_btn = QPushButton("Filter")
@@ -68,10 +65,9 @@ class AdminScheduleView(BaseAdminView):
         # Action buttons
         action_bar = self.create_action_bar([
             ("+ Create Schedule", self._create_schedule),
-            ("✏ Edit", self._edit_schedule),
-            ("🗑 Delete", self._delete_schedule),
             ("↔ Extend", self._extend_schedule),
             ("⊢ Shrink", self._shrink_schedule),
+            ("⊠ Terminate", self._terminate_schedule),
             (
                 "⟳ Refresh",
                 lambda: self.safe_load_data_async(
@@ -83,12 +79,16 @@ class AdminScheduleView(BaseAdminView):
         ])
         cl.addWidget(action_bar)
 
-        # Schedules tree
-        self.tree = ScrolledTreeview(
-            content,
-            columns=("Host", "Cloud", "Start", "End", "Schedule ID"),
-            widths=(200, 100, 160, 160, 100),
-        )
+        # Assignments tree
+        columns = ("id", "cloud", "description", "owner", "validated")
+        column_configs = {
+            "id": ("ID", 80),
+            "cloud": ("Cloud", 120),
+            "description": ("Description", 300),
+            "owner": ("Owner", 150),
+            "validated": ("Validated", 100),
+        }
+        self.tree = ScrolledTreeview(content, columns, column_configs)
         cl.addWidget(self.tree, 1)
 
         self.status_label = self.create_status_label()
@@ -103,28 +103,29 @@ class AdminScheduleView(BaseAdminView):
         )
 
     def _fetch_schedules(self):
-        host_filter = self.host_filter_entry.text().strip() if hasattr(self, "host_filter_entry") else ""
         cloud_filter = self.cloud_filter_entry.text().strip() if hasattr(self, "cloud_filter_entry") else ""
-        return self.shell.schedule_commands.get_schedules_programmatic(
-            host=host_filter or None,
-            cloud=cloud_filter or None,
-        )
+        filters = {"active": True}
+        if cloud_filter:
+            filters["cloud"] = cloud_filter
+        return self.shell.connection.api.filter_assignments(filters)
 
-    def _populate_tree(self, schedules):
+    def _populate_tree(self, assignments):
+        from quads_client.utils import extract_assignment_id, extract_cloud_name
+
         self.tree.clear()
-        if not schedules:
-            self.update_status("No schedules found")
+        if not assignments:
+            self.update_status("No assignments found")
             return
-        for sched in schedules:
-            host = sched.get("host", {})
-            host_name = host.get("name", "") if isinstance(host, dict) else str(host)
-            cloud = sched.get("cloud", {})
-            cloud_name = cloud.get("name", "") if isinstance(cloud, dict) else str(cloud)
-            start = sched.get("start", "")
-            end = sched.get("end", "")
-            sched_id = str(sched.get("id", ""))
-            self.tree.insert("", 0, values=(host_name, cloud_name, start, end, sched_id))
-        self.update_status(f"{len(schedules)} schedule(s)")
+        for assignment in assignments:
+            if not isinstance(assignment, dict):
+                continue
+            assignment_id = extract_assignment_id(assignment)
+            cloud_name = extract_cloud_name(assignment)
+            description = assignment.get("description", "")
+            owner = assignment.get("owner", "")
+            validated = "✓" if assignment.get("validated") else "○"
+            self.tree.insert("", 0, values=(assignment_id, cloud_name, description, owner, validated))
+        self.update_status(f"{len(assignments)} assignment(s)")
 
     def _apply_filter(self):
         self.safe_load_data_async(
@@ -134,23 +135,23 @@ class AdminScheduleView(BaseAdminView):
         )
 
     def _clear_filter(self):
-        self.host_filter_entry.clear()
         self.cloud_filter_entry.clear()
         self._apply_filter()
 
-    def _get_selected_schedule(self):
-        item = self.get_selected_item(self.tree)
-        if not item:
-            return None, None
-        values = self.tree.item(item, "values")
-        sched_id = values[4] if len(values) > 4 else None
-        return item, sched_id
+    def _get_selected_data(self):
+        """Return (item, assignment_id, cloud_name) for the selected tree row."""
+        item, values = self.get_selected_item("Please select an assignment")
+        if not values:
+            return None, None, None
+        assignment_id = values[0] if values else None
+        cloud_name = values[1] if len(values) > 1 else None
+        return item, assignment_id, cloud_name
 
     def _create_schedule(self, prefill_hosts=None):
         dialog = QDialog(self)
         dialog.setWindowTitle("Create Schedule")
         dialog.resize(560, 620)
-        dialog.setMinimumSize(500, 550)
+        dialog.setMinimumSize(500, 560)
         dialog.setWindowModality(Qt.WindowModality.ApplicationModal)
 
         dlayout = QVBoxLayout(dialog)
@@ -174,55 +175,16 @@ class AdminScheduleView(BaseAdminView):
         scroll.setWidget(form_container)
         dlayout.addWidget(scroll, 1)
 
-        # Mode selection
-        mode_group = QGroupBox("Assignment Mode")
-        mode_vl = QVBoxLayout(mode_group)
-        _mode_group = QButtonGroup(dialog)
-        count_radio = QRadioButton("Reserve by count (uses filters below)")
-        count_radio.setChecked(True)
-        _mode_group.addButton(count_radio, 0)
-        mode_vl.addWidget(count_radio)
-        hosts_radio = QRadioButton("Specify hosts by name")
-        _mode_group.addButton(hosts_radio, 1)
-        mode_vl.addWidget(hosts_radio)
-        form_main_layout.addWidget(mode_group)
-
-        # Count panel
-        count_panel = QGroupBox("Count")
-        count_gl = QGridLayout(count_panel)
-        count_gl.addWidget(QLabel("Hosts count:"), 0, 0, Qt.AlignmentFlag.AlignRight)
-        count_spin = QSpinBox()
-        count_spin.setRange(1, 500)
-        count_spin.setValue(1)
-        count_spin.setFixedWidth(90)
-        count_gl.addWidget(count_spin, 0, 1)
-        form_main_layout.addWidget(count_panel)
-
-        # Hosts panel
-        hosts_panel = QGroupBox("Hosts")
-        hosts_vl = QVBoxLayout(hosts_panel)
+        # Hosts
+        hosts_group = QGroupBox("Hosts")
+        hosts_vl = QVBoxLayout(hosts_group)
         hosts_vl.addWidget(QLabel("Hostnames (comma-separated):"))
         hosts_entry = QLineEdit()
-        hosts_entry.setPlaceholderText("e.g. host01,host02")
+        hosts_entry.setPlaceholderText("e.g. host01,host02,host03")
         if prefill_hosts:
             hosts_entry.setText(prefill_hosts if isinstance(prefill_hosts, str) else ",".join(prefill_hosts))
         hosts_vl.addWidget(hosts_entry)
-        hosts_panel.setVisible(False)
-        form_main_layout.addWidget(hosts_panel)
-
-        def on_mode_toggle(button_id, checked):
-            if not checked:
-                return
-            mode = _mode_group.checkedId()
-            count_panel.setVisible(mode == 0)
-            hosts_panel.setVisible(mode == 1)
-
-        _mode_group.idToggled.connect(on_mode_toggle)
-
-        if prefill_hosts:
-            hosts_radio.setChecked(True)
-            count_panel.setVisible(False)
-            hosts_panel.setVisible(True)
+        form_main_layout.addWidget(hosts_group)
 
         # Cloud & assignment
         assign_group = QGroupBox("Cloud & Assignment")
@@ -234,23 +196,27 @@ class AdminScheduleView(BaseAdminView):
         cloud_entry.setPlaceholderText("e.g. cloud08")
         assign_gl.addWidget(cloud_entry, 0, 1)
 
-        assign_gl.addWidget(QLabel("Description:"), 1, 0, Qt.AlignmentFlag.AlignRight)
+        assign_gl.addWidget(QLabel("Cloud owner:"), 1, 0, Qt.AlignmentFlag.AlignRight)
+        owner_entry = QLineEdit()
+        owner_entry.setPlaceholderText("username")
+        assign_gl.addWidget(owner_entry, 1, 1)
+
+        assign_gl.addWidget(QLabel("Description:"), 2, 0, Qt.AlignmentFlag.AlignRight)
         desc_entry = QLineEdit()
         desc_entry.setPlaceholderText("Optional")
-        assign_gl.addWidget(desc_entry, 1, 1)
+        assign_gl.addWidget(desc_entry, 2, 1)
 
-        assign_gl.addWidget(QLabel("Ticket:"), 2, 0, Qt.AlignmentFlag.AlignRight)
+        assign_gl.addWidget(QLabel("Ticket:"), 3, 0, Qt.AlignmentFlag.AlignRight)
         ticket_entry = QLineEdit()
-        assign_gl.addWidget(ticket_entry, 2, 1)
+        assign_gl.addWidget(ticket_entry, 3, 1)
 
         qinq_check = QCheckBox("Enable QinQ")
-        assign_gl.addWidget(qinq_check, 3, 1)
+        assign_gl.addWidget(qinq_check, 4, 1)
 
-        vlan_label = QLabel("VLAN:")
+        assign_gl.addWidget(QLabel("VLAN:"), 5, 0, Qt.AlignmentFlag.AlignRight)
         vlan_entry = QLineEdit()
         vlan_entry.setFixedWidth(100)
-        assign_gl.addWidget(vlan_label, 4, 0, Qt.AlignmentFlag.AlignRight)
-        assign_gl.addWidget(vlan_entry, 4, 1)
+        assign_gl.addWidget(vlan_entry, 5, 1)
         form_main_layout.addWidget(assign_group)
 
         # Dates
@@ -314,178 +280,61 @@ class AdminScheduleView(BaseAdminView):
         brl.addWidget(cancel_btn)
         create_btn = QPushButton("Create Schedule")
         create_btn.setDefault(True)
+        brl.addWidget(create_btn)
+        brl.addStretch()
         dlayout.addWidget(btn_row_w)
 
         _result = []
 
         def on_create():
-            mode = _mode_group.checkedId()
             cloud = cloud_entry.text().strip()
+            hosts_raw = hosts_entry.text().strip().replace("\n", ",")
             start = start_entry.text().strip()
             end = end_entry.text().strip()
-            if not cloud or not start or not end:
-                QMessageBox.critical(dialog, "Error", "Cloud, start, and end date are required")
+            if not cloud or not hosts_raw or not start or not end:
+                QMessageBox.critical(dialog, "Error", "Cloud, hosts, start, and end date are required")
+                return
+            hosts_list = [h.strip() for h in hosts_raw.split(",") if h.strip()]
+            if not hosts_list:
+                QMessageBox.critical(dialog, "Error", "Enter at least one hostname")
                 return
 
-            params = {
-                "cloud": cloud,
-                "description": desc_entry.text().strip(),
-                "ticket": ticket_entry.text().strip(),
-                "qinq": qinq_check.isChecked(),
-                "vlan": vlan_entry.text().strip(),
-                "start": start,
-                "end": end,
-            }
-            if mode == 0:
-                params["count"] = count_spin.value()
-            else:
-                raw = hosts_entry.text().strip()
-                if not raw:
-                    QMessageBox.critical(dialog, "Error", "Enter at least one hostname")
-                    return
-                params["hosts"] = [h.strip() for h in raw.replace("\n", ",").split(",") if h.strip()]
+            args_parts = [cloud, ",".join(hosts_list), start, end]
+            if desc_entry.text().strip():
+                args_parts += ["description", desc_entry.text().strip()]
+            if owner_entry.text().strip():
+                args_parts += ["cloud-owner", owner_entry.text().strip()]
+            if ticket_entry.text().strip():
+                args_parts += ["cloud-ticket", ticket_entry.text().strip()]
+            if vlan_entry.text().strip():
+                args_parts += ["vlan", vlan_entry.text().strip()]
+            if qinq_check.isChecked():
+                args_parts += ["qinq", "1"]
 
-            _result.append(params)
+            _result.append(shlex.join(args_parts))
             dialog.accept()
 
         create_btn.clicked.connect(on_create)
-        brl.addWidget(create_btn)
-        brl.addStretch()
 
         if dialog.exec() == QDialog.DialogCode.Accepted and _result:
-            params = _result[0]
+            args = _result[0]
             try:
-                success, message, details = self.shell.schedule_commands.create_schedule_programmatic(**params)
-                if success:
-                    self.safe_load_data_async(
-                        self._fetch_schedules, self._populate_tree, disable_widgets=[self.tree.tree]
-                    )
-                    QMessageBox.information(self, "Success", f"Schedule created\n\n{message or ''}")
-                else:
-                    QMessageBox.critical(self, "Error", message or "Schedule creation failed")
-            except Exception as exc:
-                import traceback
-
-                show_error_dialog(self, "Error", str(exc), traceback.format_exc())
-
-    def _edit_schedule(self):
-        item, sched_id = self._get_selected_schedule()
-        if not sched_id:
-            QMessageBox.warning(self, "No Selection", "Select a schedule to edit")
-            return
-
-        values = self.tree.item(item, "values")
-        host_name, cloud_name, start, end, _ = values
-
-        dialog = QDialog(self)
-        dialog.setWindowTitle(f"Edit Schedule #{sched_id}")
-        dialog.resize(500, 320)
-        dialog.setWindowModality(Qt.WindowModality.ApplicationModal)
-
-        form_widget = QWidget()
-        QGridLayout(form_widget)
-        form_widget.layout().setSpacing(8)
-        form_widget.layout().setContentsMargins(20, 15, 20, 10)
-
-        form_widget.layout().addWidget(QLabel("Host:"), 0, 0, Qt.AlignmentFlag.AlignRight)
-        host_lbl = QLabel(host_name)
-        hf = host_lbl.font()
-        hf.setBold(True)
-        host_lbl.setFont(hf)
-        form_widget.layout().addWidget(host_lbl, 0, 1)
-
-        start_entry = FormDialog.create_labeled_entry(form_widget, "Start (UTC):", 1)
-        start_entry.setText(start)
-        cal_start_btn = QPushButton("📅")
-        cal_start_btn.setFixedWidth(34)
-        form_widget.layout().addWidget(cal_start_btn, 1, 2)
-
-        def pick_s():
-            picker = DatePickerDialog(dialog, "Select Start Date", start_entry.text())
-            picker.exec()
-            r = picker.get_result()
-            if r:
-                start_entry.setText(r)
-
-        cal_start_btn.clicked.connect(pick_s)
-
-        end_entry = FormDialog.create_labeled_entry(form_widget, "End (UTC):", 2)
-        end_entry.setText(end)
-        cal_end_btn = QPushButton("📅")
-        cal_end_btn.setFixedWidth(34)
-        form_widget.layout().addWidget(cal_end_btn, 2, 2)
-
-        def pick_e():
-            picker = DatePickerDialog(
-                dialog, "Select End Date", end_entry.text(), range_start=start_entry.text() or None
-            )
-            picker.exec()
-            r = picker.get_result()
-            if r:
-                end_entry.setText(r)
-
-        cal_end_btn.clicked.connect(pick_e)
-
-        main_layout = QVBoxLayout(dialog)
-        main_layout.addWidget(form_widget)
-
-        _result = []
-
-        def on_save():
-            _result.append((start_entry.text().strip(), end_entry.text().strip()))
-            dialog.accept()
-
-        FormDialog.create_button_row(main_layout, [("Cancel", dialog.reject), ("Save", on_save)])
-
-        if dialog.exec() == QDialog.DialogCode.Accepted and _result:
-            new_start, new_end = _result[0]
-            try:
-                success, message = self.shell.schedule_commands.edit_schedule_programmatic(
-                    schedule_id=sched_id,
-                    start=new_start,
-                    end=new_end,
+                self.shell.schedule_commands.cmd_schedule_admin(args)
+                self.safe_load_data_async(
+                    self._fetch_schedules, self._populate_tree, disable_widgets=[self.tree.tree]
                 )
-                if success:
-                    self.safe_load_data_async(
-                        self._fetch_schedules, self._populate_tree, disable_widgets=[self.tree.tree]
-                    )
-                else:
-                    QMessageBox.critical(self, "Error", message or "Edit failed")
+                QMessageBox.information(self, "Success", "Schedule creation submitted")
             except Exception as exc:
-                import traceback
-
                 show_error_dialog(self, "Error", str(exc), traceback.format_exc())
-
-    def _delete_schedule(self):
-        item, sched_id = self._get_selected_schedule()
-        if not sched_id:
-            QMessageBox.warning(self, "No Selection", "Select a schedule to delete")
-            return
-        values = self.tree.item(item, "values")
-        host_name = values[0] if values else sched_id
-
-        if not self.confirm_action(f"Delete schedule for '{host_name}' (ID: {sched_id})?"):
-            return
-        try:
-            success, message = self.shell.schedule_commands.rm_schedule_programmatic(schedule_id=sched_id)
-            if success:
-                self.safe_load_data_async(self._fetch_schedules, self._populate_tree, disable_widgets=[self.tree.tree])
-            else:
-                QMessageBox.critical(self, "Error", message or "Delete failed")
-        except Exception as exc:
-            import traceback
-
-            show_error_dialog(self, "Error", str(exc), traceback.format_exc())
 
     def _extend_schedule(self):
-        item, sched_id = self._get_selected_schedule()
-        if not sched_id:
-            QMessageBox.warning(self, "No Selection", "Select a schedule to extend")
+        _, assignment_id, cloud_name = self._get_selected_data()
+        if not assignment_id or not cloud_name:
             return
 
-        dialog = self.create_simple_dialog("Extend Schedule", "300x130")
+        dialog = self.create_simple_dialog(f"Extend Assignment #{assignment_id}", "350x160")
         layout = dialog.layout()
-        layout.addWidget(QLabel(f"Extend schedule {sched_id} by:"))
+        layout.addWidget(QLabel(f"Extend {cloud_name} by:"))
 
         weeks_spin = QSpinBox()
         weeks_spin.setRange(1, 52)
@@ -504,29 +353,20 @@ class AdminScheduleView(BaseAdminView):
             return
         weeks = weeks_spin.value()
         try:
-            success, message = self.shell.schedule_commands.extend_schedule_programmatic(
-                schedule_id=sched_id,
-                weeks=weeks,
-            )
-            if success:
-                self.safe_load_data_async(self._fetch_schedules, self._populate_tree, disable_widgets=[self.tree.tree])
-                QMessageBox.information(self, "Success", message or f"Extended by {weeks} weeks")
-            else:
-                QMessageBox.critical(self, "Error", message or "Extend failed")
+            self.shell.schedule_commands.cmd_extend(f"{cloud_name} weeks {weeks}")
+            self.safe_load_data_async(self._fetch_schedules, self._populate_tree, disable_widgets=[self.tree.tree])
+            QMessageBox.information(self, "Success", f"{cloud_name} extended by {weeks} weeks")
         except Exception as exc:
-            import traceback
-
             show_error_dialog(self, "Error", str(exc), traceback.format_exc())
 
     def _shrink_schedule(self):
-        item, sched_id = self._get_selected_schedule()
-        if not sched_id:
-            QMessageBox.warning(self, "No Selection", "Select a schedule to shrink")
+        _, assignment_id, cloud_name = self._get_selected_data()
+        if not assignment_id or not cloud_name:
             return
 
-        dialog = self.create_simple_dialog("Shrink Schedule", "340x200")
+        dialog = self.create_simple_dialog(f"Shrink Assignment #{assignment_id}", "380x220")
         layout = dialog.layout()
-        layout.addWidget(QLabel(f"Shrink schedule {sched_id}:"))
+        layout.addWidget(QLabel(f"Shrink {cloud_name}:"))
 
         mode_group = QButtonGroup(dialog)
         weeks_radio = QRadioButton("By weeks:")
@@ -544,22 +384,8 @@ class AdminScheduleView(BaseAdminView):
         wrl.addStretch()
         layout.addWidget(weeks_row)
 
-        days_radio = QRadioButton("By days:")
-        mode_group.addButton(days_radio, 1)
-        layout.addWidget(days_radio)
-
-        days_spin = QSpinBox()
-        days_spin.setRange(1, 365)
-        days_spin.setValue(7)
-        days_row = QWidget()
-        drl = QHBoxLayout(days_row)
-        drl.setContentsMargins(20, 0, 0, 0)
-        drl.addWidget(days_spin)
-        drl.addStretch()
-        layout.addWidget(days_row)
-
         now_radio = QRadioButton("End now (terminate immediately)")
-        mode_group.addButton(now_radio, 2)
+        mode_group.addButton(now_radio, 1)
         layout.addWidget(now_radio)
 
         FormDialog.create_button_row(layout, [("Cancel", dialog.reject), ("Shrink", dialog.accept)])
@@ -569,29 +395,32 @@ class AdminScheduleView(BaseAdminView):
 
         mode_id = mode_group.checkedId()
         try:
-            if mode_id == 0:
-                success, message = self.shell.schedule_commands.shrink_schedule_programmatic(
-                    schedule_id=sched_id,
-                    weeks=weeks_spin.value(),
-                )
-            elif mode_id == 1:
-                success, message = self.shell.schedule_commands.shrink_schedule_programmatic(
-                    schedule_id=sched_id,
-                    days=days_spin.value(),
-                )
+            if mode_id == 1:
+                self.shell.user_commands.cmd_terminate(str(assignment_id))
+                QMessageBox.information(self, "Success", f"Assignment #{assignment_id} terminated")
             else:
-                success, message = self.shell.schedule_commands.shrink_schedule_programmatic(
-                    schedule_id=sched_id,
-                    now=True,
-                )
-            if success:
-                self.safe_load_data_async(self._fetch_schedules, self._populate_tree, disable_widgets=[self.tree.tree])
-                QMessageBox.information(self, "Success", message or "Schedule shrunk")
-            else:
-                QMessageBox.critical(self, "Error", message or "Shrink failed")
+                weeks = weeks_spin.value()
+                self.shell.schedule_commands.cmd_shrink(f"{cloud_name} weeks {weeks}")
+                QMessageBox.information(self, "Success", f"{cloud_name} shrunk by {weeks} weeks")
+            self.safe_load_data_async(self._fetch_schedules, self._populate_tree, disable_widgets=[self.tree.tree])
         except Exception as exc:
-            import traceback
+            show_error_dialog(self, "Error", str(exc), traceback.format_exc())
 
+    def _terminate_schedule(self):
+        _, assignment_id, cloud_name = self._get_selected_data()
+        if not assignment_id:
+            return
+        display = cloud_name or str(assignment_id)
+        if not self.confirm_action(
+            "Confirm Termination",
+            f"Terminate assignment #{assignment_id} ({display})?\n\nThis will release all hosts in this assignment.",
+        ):
+            return
+        try:
+            self.shell.user_commands.cmd_terminate(str(assignment_id))
+            self.safe_load_data_async(self._fetch_schedules, self._populate_tree, disable_widgets=[self.tree.tree])
+            QMessageBox.information(self, "Success", f"Assignment #{assignment_id} terminated")
+        except Exception as exc:
             show_error_dialog(self, "Error", str(exc), traceback.format_exc())
 
     def refresh(self):
