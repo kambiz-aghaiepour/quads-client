@@ -64,7 +64,6 @@ class ThemeManager:
         p = QPalette()
         bg = QColor("#c4c8d0")  # nickel grey
         fg = QColor("#1a1c22")  # near-black text
-        panel = QColor("#b0b4bc")  # medium nickel panel
         entry = QColor("#dce0e8")  # light input background
         alt = QColor("#b8bcc4")  # tree alternating row
         accent = QColor("#0055cc")  # deep blue accent
