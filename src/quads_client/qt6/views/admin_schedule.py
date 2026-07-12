@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
     QSpinBox,
     QCheckBox,
     QMessageBox,
+    QFileDialog,
 )
 from PySide6.QtCore import Qt
 
@@ -178,12 +179,51 @@ class AdminScheduleView(BaseAdminView):
         # Hosts
         hosts_group = QGroupBox("Hosts")
         hosts_vl = QVBoxLayout(hosts_group)
-        hosts_vl.addWidget(QLabel("Hostnames (comma-separated):"))
+
+        host_mode_group = QButtonGroup(dialog)
+        list_radio = QRadioButton("Comma-separated list:")
+        list_radio.setChecked(True)
+        host_mode_group.addButton(list_radio, 0)
+        hosts_vl.addWidget(list_radio)
+
         hosts_entry = QLineEdit()
         hosts_entry.setPlaceholderText("e.g. host01,host02,host03")
         if prefill_hosts:
             hosts_entry.setText(prefill_hosts if isinstance(prefill_hosts, str) else ",".join(prefill_hosts))
         hosts_vl.addWidget(hosts_entry)
+
+        file_radio = QRadioButton("From file:")
+        host_mode_group.addButton(file_radio, 1)
+        hosts_vl.addWidget(file_radio)
+
+        file_row = QWidget()
+        file_rl = QHBoxLayout(file_row)
+        file_rl.setContentsMargins(0, 0, 0, 0)
+        file_entry = QLineEdit()
+        file_entry.setPlaceholderText("Path to file with one hostname per line")
+        file_rl.addWidget(file_entry)
+        browse_btn = QPushButton("Browse…")
+
+        def browse_file():
+            path, _ = QFileDialog.getOpenFileName(dialog, "Select Host List File", "", "All Files (*)")
+            if path:
+                file_entry.setText(path)
+
+        browse_btn.clicked.connect(browse_file)
+        file_rl.addWidget(browse_btn)
+        hosts_vl.addWidget(file_row)
+
+        def on_host_mode_toggle(button_id, checked):
+            if not checked:
+                return
+            hosts_entry.setEnabled(button_id == 0)
+            file_entry.setEnabled(button_id == 1)
+            browse_btn.setEnabled(button_id == 1)
+
+        host_mode_group.idToggled.connect(on_host_mode_toggle)
+        file_entry.setEnabled(False)
+        browse_btn.setEnabled(False)
+
         form_main_layout.addWidget(hosts_group)
 
         # Cloud & assignment
@@ -288,18 +328,41 @@ class AdminScheduleView(BaseAdminView):
 
         def on_create():
             cloud = cloud_entry.text().strip()
-            hosts_raw = hosts_entry.text().strip().replace("\n", ",")
             start = start_entry.text().strip()
             end = end_entry.text().strip()
-            if not cloud or not hosts_raw or not start or not end:
-                QMessageBox.critical(dialog, "Error", "Cloud, hosts, start, and end date are required")
-                return
-            hosts_list = [h.strip() for h in hosts_raw.split(",") if h.strip()]
-            if not hosts_list:
-                QMessageBox.critical(dialog, "Error", "Enter at least one hostname")
+            host_mode = host_mode_group.checkedId()
+
+            if not cloud or not start or not end:
+                QMessageBox.critical(dialog, "Error", "Cloud, start, and end date are required")
                 return
 
-            args_parts = [cloud, ",".join(hosts_list), start, end]
+            if host_mode == 0:
+                hosts_raw = hosts_entry.text().strip().replace("\n", ",")
+                hosts_list = [h.strip() for h in hosts_raw.split(",") if h.strip()]
+                if not hosts_list:
+                    QMessageBox.critical(dialog, "Error", "Enter at least one hostname")
+                    return
+                host_args = [",".join(hosts_list)]
+            else:
+                file_path = file_entry.text().strip()
+                if not file_path:
+                    QMessageBox.critical(dialog, "Error", "Select a host list file")
+                    return
+                try:
+                    with open(file_path) as fh:
+                        lines = [ln.strip() for ln in fh if ln.strip()]
+                    if not lines:
+                        QMessageBox.critical(dialog, "Error", f"No hostnames found in file: {file_path}")
+                        return
+                except FileNotFoundError:
+                    QMessageBox.critical(dialog, "Error", f"File not found: {file_path}")
+                    return
+                except Exception as exc:
+                    QMessageBox.critical(dialog, "Error", f"Failed to read file: {exc}")
+                    return
+                host_args = ["host-list", file_path]
+
+            args_parts = [cloud] + host_args + [start, end]
             if desc_entry.text().strip():
                 args_parts += ["description", desc_entry.text().strip()]
             if owner_entry.text().strip():
