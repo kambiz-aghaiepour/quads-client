@@ -86,29 +86,56 @@ install -Dm 0644 desktop/icons/quads-client.png %{buildroot}%{_datadir}/icons/hi
 %clean
 rm -rf %{buildroot}
 
-%package gui
-Summary: GUI for QUADS Client
+%package gui-tk
+Summary: Tkinter GUI for QUADS Client
 Requires: %{name} = %{version}-%{release}
 Requires: python3-tkinter >= 3.13
+Provides: quads-client-gui
+Conflicts: quads-client-gui-qt6
 
-%description gui
-Graphical user interface for QUADS Client using tkinter.
+%description gui-tk
+Graphical user interface for QUADS Client using tkinter/ttk.
 Provides an intuitive GUI for managing QUADS servers, scheduling
 hosts, and monitoring assignments. Requires X11/Wayland display.
 
-Theme packages (ttkthemes, sv-ttk) are installed as Python dependencies.
-Falls back to built-in 'clam' theme if pip packages unavailable.
+This package installs the quads-client-gui-tk binary and a
+quads-client-gui symlink pointing to it.
+
+%package gui-qt6
+Summary: Qt6 (PySide6) GUI for QUADS Client
+Requires: %{name} = %{version}-%{release}
+Requires: python3-pyside6
+Provides: quads-client-gui
+Conflicts: quads-client-gui-tk
+
+%description gui-qt6
+Graphical user interface for QUADS Client using PySide6 (Qt6).
+Provides an intuitive GUI for managing QUADS servers, scheduling
+hosts, and monitoring assignments. Requires X11/Wayland display.
+
+Uses the Qt Fusion style for a consistent cross-platform look on
+both Linux (Fedora/RHEL) and macOS. Supports dark and light themes.
+
+This package installs the quads-client-gui-qt6 binary and a
+quads-client-gui symlink pointing to it.
 
 %files
 %doc README.md
 %license LICENSE
 %{_bindir}/quads-client
 %{python3_sitelib}/quads_client/
+%exclude %{python3_sitelib}/quads_client/qt6/
 %{python3_sitelib}/quads_client-*.egg-info/
 %{_datadir}/doc/quads-client/
 
-%files gui
-%{_bindir}/quads-client-gui
+%files gui-tk
+%{_bindir}/quads-client-gui-tk
+%{_datadir}/applications/quads-client-gui.desktop
+%{_datadir}/icons/hicolor/128x128/apps/quads-client.png
+
+%files gui-qt6
+%{_bindir}/quads-client-gui-qt6
+%{python3_sitelib}/quads_client/qt6/
 %{_datadir}/applications/quads-client-gui.desktop
 %{_datadir}/icons/hicolor/128x128/apps/quads-client.png
 
@@ -135,27 +162,69 @@ echo "======================================================="
 fi
 :;
 
-%post gui
-# Update desktop database
+%post gui-tk
+ln -sf %{_bindir}/quads-client-gui-tk %{_bindir}/quads-client-gui
 if [ -x /usr/bin/update-desktop-database ]; then
     /usr/bin/update-desktop-database %{_datadir}/applications &> /dev/null || :
 fi
-
-# Update icon cache
 if [ -x /usr/bin/gtk-update-icon-cache ]; then
     /usr/bin/gtk-update-icon-cache %{_datadir}/icons/hicolor &> /dev/null || :
 fi
-
 if [ "$1" -eq 1 ]; then
 echo "======================================================="
-echo " QUADS Client GUI installed successfully               "
+echo " QUADS Client GUI (Tk) installed successfully          "
 echo "======================================================="
-echo "                                                       "
-echo " Launch with: quads-client-gui                         "
+echo " Launch with: quads-client-gui  (or quads-client-gui-tk)"
 echo " Or find it in your Applications menu                  "
-echo "                                                       "
-echo " Note: Requires X11/Wayland display                    "
 echo "======================================================="
+fi
+:;
+
+%preun gui-tk
+if [ "$1" -eq 0 ]; then
+    rm -f %{_bindir}/quads-client-gui
+fi
+:;
+
+%postun gui-tk
+if [ -x /usr/bin/update-desktop-database ]; then
+    /usr/bin/update-desktop-database %{_datadir}/applications &> /dev/null || :
+fi
+if [ -x /usr/bin/gtk-update-icon-cache ]; then
+    /usr/bin/gtk-update-icon-cache %{_datadir}/icons/hicolor &> /dev/null || :
+fi
+:;
+
+%post gui-qt6
+ln -sf %{_bindir}/quads-client-gui-qt6 %{_bindir}/quads-client-gui
+if [ -x /usr/bin/update-desktop-database ]; then
+    /usr/bin/update-desktop-database %{_datadir}/applications &> /dev/null || :
+fi
+if [ -x /usr/bin/gtk-update-icon-cache ]; then
+    /usr/bin/gtk-update-icon-cache %{_datadir}/icons/hicolor &> /dev/null || :
+fi
+if [ "$1" -eq 1 ]; then
+echo "======================================================="
+echo " QUADS Client GUI (Qt6) installed successfully         "
+echo "======================================================="
+echo " Launch with: quads-client-gui  (or quads-client-gui-qt6)"
+echo " Or find it in your Applications menu                  "
+echo "======================================================="
+fi
+:;
+
+%preun gui-qt6
+if [ "$1" -eq 0 ]; then
+    rm -f %{_bindir}/quads-client-gui
+fi
+:;
+
+%postun gui-qt6
+if [ -x /usr/bin/update-desktop-database ]; then
+    /usr/bin/update-desktop-database %{_datadir}/applications &> /dev/null || :
+fi
+if [ -x /usr/bin/gtk-update-icon-cache ]; then
+    /usr/bin/gtk-update-icon-cache %{_datadir}/icons/hicolor &> /dev/null || :
 fi
 :;
 
@@ -164,18 +233,6 @@ fi
 
 %postun
 find %{python3_sitelib}/quads_client 2>/dev/null | grep -E "(/__pycache__$|\.pyc$|\.pyo$)" | xargs rm -rf 2>/dev/null || true
-:;
-
-%postun gui
-# Update desktop database
-if [ -x /usr/bin/update-desktop-database ]; then
-    /usr/bin/update-desktop-database %{_datadir}/applications &> /dev/null || :
-fi
-
-# Update icon cache
-if [ -x /usr/bin/gtk-update-icon-cache ]; then
-    /usr/bin/gtk-update-icon-cache %{_datadir}/icons/hicolor &> /dev/null || :
-fi
 :;
 
 %changelog

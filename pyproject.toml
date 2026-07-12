@@ -43,7 +43,8 @@ test = [
 
 [project.scripts]
 quads-client = "quads_client.cli:main"
-quads-client-gui = "quads_client.gui:main"
+quads-client-gui-tk  = "quads_client.gui:main"
+quads-client-gui-qt6 = "quads_client.qt6:main"
 
 
 
