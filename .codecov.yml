@@ -35,6 +35,8 @@ coverage:
     - "src/quads_client/shell.py"           # Interactive REPL - requires integration tests with cmd2
     - "src/quads_client/rich_console.py"   # Thin wrapper around Rich library methods
     - "src/quads_client/progress.py"       # Progress display utility - UI/framework code
+    - "src/quads_client/gui/**"            # Tkinter GUI - requires display server; excluded from CI
+    - "src/quads_client/qt6/**"            # Qt6/PySide6 GUI - requires display server; excluded from CI
     - "tests/**"                            # Test files themselves
     - "setup.py"                            # Setup script
 
