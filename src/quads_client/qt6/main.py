@@ -55,6 +55,7 @@ class QuadsClientApp(QMainWindow):
         self.preferences = self._load_preferences()
 
         self._apply_window_preferences()
+        self._apply_font_preferences()
 
         self._create_menu_bar()
         self._create_main_layout()
@@ -122,6 +123,7 @@ class QuadsClientApp(QMainWindow):
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         title.setContentsMargins(10, 14, 10, 4)
         sb_layout.addWidget(title)
+        self.sidebar_title_label = title
 
         sep = QFrame()
         sep.setFrameShape(QFrame.Shape.HLine)
@@ -372,19 +374,30 @@ class QuadsClientApp(QMainWindow):
 
     def _show_preferences(self):
         old_font_size = self.preferences.get("font_size", "large")
+        old_theme = self.theme_manager.current_mode
         dialog = PreferencesDialog(self, self.shell)
         dialog.exec()
         result = dialog.get_result()
         if result:
+            if self.shell.config and hasattr(self.shell.config, "config_data"):
+                self.shell.config.config_data["gui_qc_preferences"] = result
+                try:
+                    self.shell.config.save_config()
+                except Exception:
+                    pass
             self.preferences = self._load_preferences()
+            new_theme = result.get("theme", old_theme)
+            if new_theme != old_theme:
+                self.theme_manager.apply_theme(new_theme)
             new_font_size = self.preferences.get("font_size", "large")
             if new_font_size != old_font_size:
                 self._apply_font_preferences()
+                self._rebuild_all_views()
                 self.update_status(f"Preferences saved — font size: {new_font_size}")
             else:
                 self.update_status("Preferences saved")
-            if "my_hosts" in self.views and hasattr(self.views["my_hosts"], "apply_preferences"):
-                self.views["my_hosts"].apply_preferences(self.preferences)
+                if "my_hosts" in self.views and hasattr(self.views["my_hosts"], "apply_preferences"):
+                    self.views["my_hosts"].apply_preferences(self.preferences)
 
     def _auto_login_from_welcome(self):
         from quads_client.qt6.widgets.dialogs import show_error_dialog
@@ -601,7 +614,7 @@ class QuadsClientApp(QMainWindow):
             "window_height": 800,
         }
         if self.shell.config and hasattr(self.shell.config, "config_data"):
-            gui_prefs = self.shell.config.config_data.get("gui_preferences", {})
+            gui_prefs = self.shell.config.config_data.get("gui_qc_preferences", {})
             return {**defaults, **gui_prefs}
         return defaults
 
@@ -624,12 +637,50 @@ class QuadsClientApp(QMainWindow):
         font = QFont()
         font.setPointSize(pt)
         QApplication.setFont(font)
+        # Regenerate QSS so the nav button font-size (derived from app font) updates too
+        if hasattr(self, "theme_manager"):
+            self.theme_manager.apply_theme(self.theme_manager.current_mode)
+
+    def apply_font_size(self, size_key):
+        """Apply and persist a font size key immediately (called from Settings view)."""
+        self.preferences["font_size"] = size_key
+        self._apply_font_preferences()
+        if self.shell.config and hasattr(self.shell.config, "config_data"):
+            self.shell.config.config_data.setdefault("gui_qc_preferences", {})["font_size"] = size_key
+            try:
+                self.shell.config.save_config()
+            except Exception:
+                pass
+        self._rebuild_all_views()
+
+    def _rebuild_all_views(self):
+        """Destroy and recreate all constructed views so header fonts re-scale to the new base."""
+        from PySide6.QtWidgets import QApplication
+        from PySide6.QtGui import QFont
+
+        # Re-apply sidebar title font relative to the new app base size
+        if hasattr(self, "sidebar_title_label"):
+            base_pt = QApplication.instance().font().pointSize()
+            f = QFont()
+            f.setBold(True)
+            f.setPointSize(base_pt + 2)
+            self.sidebar_title_label.setFont(f)
+
+        last_view = self.current_view_name
+        for view in list(self.views.values()):
+            self.content_stack.removeWidget(view)
+            view.deleteLater()
+        self.views.clear()
+        self.current_view = None
+        self.current_view_name = None
+
+        self._show_view(last_view or "welcome")
 
     def _save_window_preferences(self):
         if not self.preferences.get("remember_window", True):
             return
         if self.shell.config and hasattr(self.shell.config, "config_data"):
-            prefs = self.shell.config.config_data.setdefault("gui_preferences", {})
+            prefs = self.shell.config.config_data.setdefault("gui_qc_preferences", {})
             prefs["window_width"] = self.width()
             prefs["window_height"] = self.height()
             try:

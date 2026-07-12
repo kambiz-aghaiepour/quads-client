@@ -143,7 +143,7 @@ class MyHostsView(QWidget):
 
     def _get_preferences(self):
         if self.shell.config and hasattr(self.shell.config, "config_data"):
-            return self.shell.config.config_data.get("gui_preferences", {})
+            return self.shell.config.config_data.get("gui_qc_preferences", {})
         return {}
 
     def _auto_login(self):

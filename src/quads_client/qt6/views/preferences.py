@@ -91,11 +91,17 @@ class PreferencesDialog(QDialog):
         self.theme_combo.setFixedWidth(120)
         appearance_layout.addWidget(self.theme_combo, 0, 1)
 
+        appearance_layout.addWidget(QLabel("Font size:"), 1, 0, Qt.AlignmentFlag.AlignRight)
+        self.font_size_combo = QComboBox()
+        self.font_size_combo.addItems(["Small", "Medium", "Large", "Extra Large"])
+        self.font_size_combo.setFixedWidth(120)
+        appearance_layout.addWidget(self.font_size_combo, 1, 1)
+
         self.show_admin_badge_check = QCheckBox("Show admin badge in status bar")
-        appearance_layout.addWidget(self.show_admin_badge_check, 1, 0, 1, 2)
+        appearance_layout.addWidget(self.show_admin_badge_check, 2, 0, 1, 2)
 
         self.compact_sidebar_check = QCheckBox("Use compact sidebar (icons only)")
-        appearance_layout.addWidget(self.compact_sidebar_check, 2, 0, 1, 2)
+        appearance_layout.addWidget(self.compact_sidebar_check, 3, 0, 1, 2)
         cl.addWidget(appearance_group)
 
         # --- Connection ---
@@ -154,15 +160,18 @@ class PreferencesDialog(QDialog):
 
     def _load_current_prefs(self):
         config = self.shell.config
-        if not config:
-            return
-        prefs = config.get_preferences() if hasattr(config, "get_preferences") else {}
+        prefs = {}
+        if config and hasattr(config, "config_data"):
+            prefs = config.config_data.get("gui_qc_preferences", {})
 
         self.auto_refresh_check.setChecked(prefs.get("auto_refresh", True))
         self.refresh_interval_spin.setValue(prefs.get("refresh_interval", 30))
 
         theme = self.shell.gui_app.theme_manager.current_mode if self.shell.gui_app else "dark"
         self.theme_combo.setCurrentText(theme.capitalize())
+
+        size_labels = {"small": "Small", "medium": "Medium", "large": "Large", "extra_large": "Extra Large"}
+        self.font_size_combo.setCurrentText(size_labels.get(prefs.get("font_size", "large"), "Large"))
 
         self.show_admin_badge_check.setChecked(prefs.get("show_admin_badge", True))
         self.compact_sidebar_check.setChecked(prefs.get("compact_sidebar", False))
@@ -176,6 +185,7 @@ class PreferencesDialog(QDialog):
         self.auto_refresh_check.setChecked(True)
         self.refresh_interval_spin.setValue(30)
         self.theme_combo.setCurrentText("Dark")
+        self.font_size_combo.setCurrentText("Large")
         self.show_admin_badge_check.setChecked(True)
         self.compact_sidebar_check.setChecked(False)
         self.auto_reconnect_check.setChecked(True)
@@ -185,10 +195,12 @@ class PreferencesDialog(QDialog):
         self.notify_on_error_check.setChecked(True)
 
     def _on_save(self):
+        label_to_key = {"Small": "small", "Medium": "medium", "Large": "large", "Extra Large": "extra_large"}
         self._result = {
             "auto_refresh": self.auto_refresh_check.isChecked(),
             "refresh_interval": self.refresh_interval_spin.value(),
             "theme": self.theme_combo.currentText().lower(),
+            "font_size": label_to_key.get(self.font_size_combo.currentText(), "large"),
             "show_admin_badge": self.show_admin_badge_check.isChecked(),
             "compact_sidebar": self.compact_sidebar_check.isChecked(),
             "auto_reconnect": self.auto_reconnect_check.isChecked(),

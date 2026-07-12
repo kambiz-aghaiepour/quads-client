@@ -93,6 +93,11 @@ class ThemeManager:
         scrollbar_bg = "#2d2d2d" if is_dark else "#f0f0f0"
         scrollbar_handle = "#555555" if is_dark else "#b0b0b0"
 
+        # Derive nav button font size from the current application font so the
+        # sidebar scales with the user's font preference.
+        app = QApplication.instance()
+        nav_pt = app.font().pointSize() if app else 11
+
         return f"""
 QTreeWidget {{
     alternate-background-color: {tree_alt};
@@ -124,7 +129,7 @@ QPushButton#nav_btn {{
     border: none;
     border-radius: 0px;
     padding: 7px 14px;
-    font-size: 13px;
+    font-size: {nav_pt}pt;
 }}
 QPushButton#nav_btn:hover {{
     background-color: {sidebar_hover};

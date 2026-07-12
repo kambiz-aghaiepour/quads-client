@@ -11,6 +11,7 @@ from PySide6.QtWidgets import (
     QScrollArea,
     QGroupBox,
     QFrame,
+    QComboBox,
 )
 from PySide6.QtCore import Qt
 
@@ -23,6 +24,7 @@ class SettingsView(QWidget):
         self.shell = shell
         self.theme_label = None
         self.status_label = None
+        self.font_size_combo = None
         self._create_ui()
 
     def _create_ui(self):
@@ -72,6 +74,20 @@ class SettingsView(QWidget):
         th.addWidget(toggle_btn)
         th.addStretch()
         al.addWidget(theme_row)
+
+        font_row = QWidget()
+        fh = QHBoxLayout(font_row)
+        fh.setContentsMargins(0, 0, 0, 0)
+        fh.addWidget(QLabel("Font size:"))
+        self.font_size_combo = QComboBox()
+        self.font_size_combo.addItems(["Small", "Medium", "Large", "Extra Large"])
+        self.font_size_combo.setFixedWidth(120)
+        size_labels = {"small": "Small", "medium": "Medium", "large": "Large", "extra_large": "Extra Large"}
+        self.font_size_combo.setCurrentText(size_labels.get(self._get_current_font_size(), "Large"))
+        self.font_size_combo.currentIndexChanged.connect(self._on_font_size_changed)
+        fh.addWidget(self.font_size_combo)
+        fh.addStretch()
+        al.addWidget(font_row)
         cl.addWidget(appearance_box)
 
         # Auto-refresh
@@ -179,6 +195,22 @@ class SettingsView(QWidget):
             self.status_label.setText(f"Theme switched to {new_mode} mode")
         if self.theme_label:
             self.theme_label.setText(f"{new_mode.capitalize()} Mode")
+
+    def _get_current_font_size(self):
+        if self.shell.config and hasattr(self.shell.config, "config_data"):
+            return self.shell.config.config_data.get("gui_qc_preferences", {}).get("font_size", "large")
+        return "large"
+
+    def _on_font_size_changed(self, _index):
+        if self.font_size_combo is None:
+            return
+        label_to_key = {"Small": "small", "Medium": "medium", "Large": "large", "Extra Large": "extra_large"}
+        size_label = self.font_size_combo.currentText()
+        size_key = label_to_key.get(size_label, "large")
+        self.shell.gui_app.apply_font_size(size_key)
+        # apply_font_size rebuilds all views (including this one), so report
+        # the status change via the main window's persistent status bar
+        self.shell.gui_app.update_status(f"Font size set to {size_label}")
 
     def _manage_servers(self):
         self.shell.gui_app._show_servers_view()
