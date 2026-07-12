@@ -31,6 +31,7 @@ def main():
     except Exception as e:
         print(f"ERROR: Failed to start GUI: {e}")
         import traceback
+
         traceback.print_exc()
         return 1
 

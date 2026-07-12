@@ -1,9 +1,20 @@
 """Preferences dialog"""
 
 from PySide6.QtWidgets import (
-    QDialog, QVBoxLayout, QHBoxLayout, QGridLayout, QLabel, QPushButton,
-    QScrollArea, QGroupBox, QFrame, QSpinBox, QCheckBox, QComboBox,
-    QDialogButtonBox, QWidget,
+    QDialog,
+    QVBoxLayout,
+    QHBoxLayout,
+    QGridLayout,
+    QLabel,
+    QPushButton,
+    QScrollArea,
+    QGroupBox,
+    QFrame,
+    QSpinBox,
+    QCheckBox,
+    QComboBox,
+    QDialogButtonBox,
+    QWidget,
 )
 from PySide6.QtCore import Qt
 

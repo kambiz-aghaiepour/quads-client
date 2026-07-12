@@ -1,10 +1,25 @@
 """Admin schedule management view"""
 
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QLabel, QPushButton,
-    QLineEdit, QScrollArea, QGroupBox, QFrame, QDialog, QComboBox,
-    QRadioButton, QButtonGroup, QSpinBox, QCheckBox, QTextEdit,
-    QMessageBox, QAbstractItemView,
+    QWidget,
+    QVBoxLayout,
+    QHBoxLayout,
+    QGridLayout,
+    QLabel,
+    QPushButton,
+    QLineEdit,
+    QScrollArea,
+    QGroupBox,
+    QFrame,
+    QDialog,
+    QComboBox,
+    QRadioButton,
+    QButtonGroup,
+    QSpinBox,
+    QCheckBox,
+    QTextEdit,
+    QMessageBox,
+    QAbstractItemView,
 )
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QBrush, QColor, QFont
@@ -61,10 +76,14 @@ class AdminScheduleView(BaseAdminView):
             ("🗑 Delete", self._delete_schedule),
             ("↔ Extend", self._extend_schedule),
             ("⊢ Shrink", self._shrink_schedule),
-            ("⟳ Refresh", lambda: self.safe_load_data_async(
-                self._fetch_schedules, self._populate_tree,
-                disable_widgets=[self.tree.tree],
-            )),
+            (
+                "⟳ Refresh",
+                lambda: self.safe_load_data_async(
+                    self._fetch_schedules,
+                    self._populate_tree,
+                    disable_widgets=[self.tree.tree],
+                ),
+            ),
         )
         cl.addWidget(action_bar)
 
@@ -82,7 +101,8 @@ class AdminScheduleView(BaseAdminView):
         self._main_layout.addWidget(content, 1)
 
         self.safe_load_data_async(
-            self._fetch_schedules, self._populate_tree,
+            self._fetch_schedules,
+            self._populate_tree,
             disable_widgets=[self.tree.tree],
         )
 
@@ -112,7 +132,8 @@ class AdminScheduleView(BaseAdminView):
 
     def _apply_filter(self):
         self.safe_load_data_async(
-            self._fetch_schedules, self._populate_tree,
+            self._fetch_schedules,
+            self._populate_tree,
             disable_widgets=[self.tree.tree],
         )
 
@@ -199,6 +220,7 @@ class AdminScheduleView(BaseAdminView):
             mode = _mode_group.checkedId()
             count_panel.setVisible(mode == 0)
             hosts_panel.setVisible(mode == 1)
+
         _mode_group.idToggled.connect(on_mode_toggle)
 
         if prefill_hosts:
@@ -248,12 +270,14 @@ class AdminScheduleView(BaseAdminView):
         dates_gl.addWidget(start_entry, 0, 1)
         cal_start_btn = QPushButton("📅")
         cal_start_btn.setFixedWidth(34)
+
         def pick_start():
             picker = DatePickerDialog(dialog, "Select Start Date", start_entry.text() or None)
             picker.exec()
             result = picker.get_result()
             if result:
                 start_entry.setText(result)
+
         cal_start_btn.clicked.connect(pick_start)
         dates_gl.addWidget(cal_start_btn, 0, 2)
 
@@ -265,13 +289,16 @@ class AdminScheduleView(BaseAdminView):
         dates_gl.addWidget(end_entry, 1, 1)
         cal_end_btn = QPushButton("📅")
         cal_end_btn.setFixedWidth(34)
+
         def pick_end():
-            picker = DatePickerDialog(dialog, "Select End Date", end_entry.text() or None,
-                                      range_start=start_entry.text() or None)
+            picker = DatePickerDialog(
+                dialog, "Select End Date", end_entry.text() or None, range_start=start_entry.text() or None
+            )
             picker.exec()
             result = picker.get_result()
             if result:
                 end_entry.setText(result)
+
         cal_end_btn.clicked.connect(pick_end)
         dates_gl.addWidget(cal_end_btn, 1, 2)
         form_main_layout.addWidget(dates_group)
@@ -334,13 +361,15 @@ class AdminScheduleView(BaseAdminView):
             try:
                 success, message, details = self.shell.schedule_commands.create_schedule_programmatic(**params)
                 if success:
-                    self.safe_load_data_async(self._fetch_schedules, self._populate_tree,
-                                              disable_widgets=[self.tree.tree])
+                    self.safe_load_data_async(
+                        self._fetch_schedules, self._populate_tree, disable_widgets=[self.tree.tree]
+                    )
                     QMessageBox.information(self, "Success", f"Schedule created\n\n{message or ''}")
                 else:
                     QMessageBox.critical(self, "Error", message or "Schedule creation failed")
             except Exception as exc:
                 import traceback
+
                 show_error_dialog(self, "Error", str(exc), traceback.format_exc())
 
     def _edit_schedule(self):
@@ -374,12 +403,14 @@ class AdminScheduleView(BaseAdminView):
         cal_start_btn = QPushButton("📅")
         cal_start_btn.setFixedWidth(34)
         form_widget.layout().addWidget(cal_start_btn, 1, 2)
+
         def pick_s():
             picker = DatePickerDialog(dialog, "Select Start Date", start_entry.text())
             picker.exec()
             r = picker.get_result()
             if r:
                 start_entry.setText(r)
+
         cal_start_btn.clicked.connect(pick_s)
 
         end_entry = FormDialog.create_labeled_entry(form_widget, "End (UTC):", 2)
@@ -387,19 +418,23 @@ class AdminScheduleView(BaseAdminView):
         cal_end_btn = QPushButton("📅")
         cal_end_btn.setFixedWidth(34)
         form_widget.layout().addWidget(cal_end_btn, 2, 2)
+
         def pick_e():
-            picker = DatePickerDialog(dialog, "Select End Date", end_entry.text(),
-                                      range_start=start_entry.text() or None)
+            picker = DatePickerDialog(
+                dialog, "Select End Date", end_entry.text(), range_start=start_entry.text() or None
+            )
             picker.exec()
             r = picker.get_result()
             if r:
                 end_entry.setText(r)
+
         cal_end_btn.clicked.connect(pick_e)
 
         main_layout = QVBoxLayout(dialog)
         main_layout.addWidget(form_widget)
 
         _result = []
+
         def on_save():
             _result.append((start_entry.text().strip(), end_entry.text().strip()))
             dialog.accept()
@@ -410,15 +445,19 @@ class AdminScheduleView(BaseAdminView):
             new_start, new_end = _result[0]
             try:
                 success, message = self.shell.schedule_commands.edit_schedule_programmatic(
-                    schedule_id=sched_id, start=new_start, end=new_end,
+                    schedule_id=sched_id,
+                    start=new_start,
+                    end=new_end,
                 )
                 if success:
-                    self.safe_load_data_async(self._fetch_schedules, self._populate_tree,
-                                              disable_widgets=[self.tree.tree])
+                    self.safe_load_data_async(
+                        self._fetch_schedules, self._populate_tree, disable_widgets=[self.tree.tree]
+                    )
                 else:
                     QMessageBox.critical(self, "Error", message or "Edit failed")
             except Exception as exc:
                 import traceback
+
                 show_error_dialog(self, "Error", str(exc), traceback.format_exc())
 
     def _delete_schedule(self):
@@ -434,12 +473,12 @@ class AdminScheduleView(BaseAdminView):
         try:
             success, message = self.shell.schedule_commands.rm_schedule_programmatic(schedule_id=sched_id)
             if success:
-                self.safe_load_data_async(self._fetch_schedules, self._populate_tree,
-                                          disable_widgets=[self.tree.tree])
+                self.safe_load_data_async(self._fetch_schedules, self._populate_tree, disable_widgets=[self.tree.tree])
             else:
                 QMessageBox.critical(self, "Error", message or "Delete failed")
         except Exception as exc:
             import traceback
+
             show_error_dialog(self, "Error", str(exc), traceback.format_exc())
 
     def _extend_schedule(self):
@@ -470,16 +509,17 @@ class AdminScheduleView(BaseAdminView):
         weeks = weeks_spin.value()
         try:
             success, message = self.shell.schedule_commands.extend_schedule_programmatic(
-                schedule_id=sched_id, weeks=weeks,
+                schedule_id=sched_id,
+                weeks=weeks,
             )
             if success:
-                self.safe_load_data_async(self._fetch_schedules, self._populate_tree,
-                                          disable_widgets=[self.tree.tree])
+                self.safe_load_data_async(self._fetch_schedules, self._populate_tree, disable_widgets=[self.tree.tree])
                 QMessageBox.information(self, "Success", message or f"Extended by {weeks} weeks")
             else:
                 QMessageBox.critical(self, "Error", message or "Extend failed")
         except Exception as exc:
             import traceback
+
             show_error_dialog(self, "Error", str(exc), traceback.format_exc())
 
     def _shrink_schedule(self):
@@ -535,27 +575,29 @@ class AdminScheduleView(BaseAdminView):
         try:
             if mode_id == 0:
                 success, message = self.shell.schedule_commands.shrink_schedule_programmatic(
-                    schedule_id=sched_id, weeks=weeks_spin.value(),
+                    schedule_id=sched_id,
+                    weeks=weeks_spin.value(),
                 )
             elif mode_id == 1:
                 success, message = self.shell.schedule_commands.shrink_schedule_programmatic(
-                    schedule_id=sched_id, days=days_spin.value(),
+                    schedule_id=sched_id,
+                    days=days_spin.value(),
                 )
             else:
                 success, message = self.shell.schedule_commands.shrink_schedule_programmatic(
-                    schedule_id=sched_id, now=True,
+                    schedule_id=sched_id,
+                    now=True,
                 )
             if success:
-                self.safe_load_data_async(self._fetch_schedules, self._populate_tree,
-                                          disable_widgets=[self.tree.tree])
+                self.safe_load_data_async(self._fetch_schedules, self._populate_tree, disable_widgets=[self.tree.tree])
                 QMessageBox.information(self, "Success", message or "Schedule shrunk")
             else:
                 QMessageBox.critical(self, "Error", message or "Shrink failed")
         except Exception as exc:
             import traceback
+
             show_error_dialog(self, "Error", str(exc), traceback.format_exc())
 
     def refresh(self):
         if hasattr(self, "tree"):
-            self.safe_load_data_async(self._fetch_schedules, self._populate_tree,
-                                      disable_widgets=[self.tree.tree])
+            self.safe_load_data_async(self._fetch_schedules, self._populate_tree, disable_widgets=[self.tree.tree])

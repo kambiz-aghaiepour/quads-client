@@ -1,8 +1,17 @@
 """Assignments view - shows user's assignments in list format"""
 
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QLabel, QPushButton,
-    QSpinBox, QRadioButton, QButtonGroup, QDialog, QMessageBox,
+    QWidget,
+    QVBoxLayout,
+    QHBoxLayout,
+    QGridLayout,
+    QLabel,
+    QPushButton,
+    QSpinBox,
+    QRadioButton,
+    QButtonGroup,
+    QDialog,
+    QMessageBox,
 )
 from PySide6.QtCore import Qt
 
@@ -36,11 +45,13 @@ class AssignmentsView(BaseAdminView):
         self._main_layout.addWidget(content, 1)
 
         if self.shell.is_admin():
-            self.create_action_bar([
-                ("Extend", self._extend_assignment),
-                ("Shrink", self._shrink_assignment),
-                ("Terminate Selected", self._terminate_selected),
-            ])
+            self.create_action_bar(
+                [
+                    ("Extend", self._extend_assignment),
+                    ("Shrink", self._shrink_assignment),
+                    ("Terminate Selected", self._terminate_selected),
+                ]
+            )
         else:
             self.create_action_bar([("Terminate Selected", self._terminate_selected)])
 

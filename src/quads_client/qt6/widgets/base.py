@@ -3,9 +3,20 @@
 import traceback
 
 from PySide6.QtWidgets import (
-    QWidget, QHBoxLayout, QVBoxLayout, QLabel, QPushButton,
-    QTreeWidget, QTreeWidgetItem, QAbstractItemView, QMessageBox,
-    QDialog, QGridLayout, QLineEdit, QHeaderView, QFrame,
+    QWidget,
+    QHBoxLayout,
+    QVBoxLayout,
+    QLabel,
+    QPushButton,
+    QTreeWidget,
+    QTreeWidgetItem,
+    QAbstractItemView,
+    QMessageBox,
+    QDialog,
+    QGridLayout,
+    QLineEdit,
+    QHeaderView,
+    QFrame,
 )
 from PySide6.QtCore import Qt, QThread, Signal
 from PySide6.QtGui import QKeySequence, QShortcut
@@ -76,6 +87,7 @@ class ScrolledTreeview(QWidget):
 
     def copy_selected(self):
         from PySide6.QtWidgets import QApplication
+
         items = self.tree.selectedItems()
         if not items:
             return 0
@@ -240,7 +252,9 @@ class BaseAdminView(QWidget):
 
     def confirm_action(self, title, message):
         result = QMessageBox.question(
-            self, title, message,
+            self,
+            title,
+            message,
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No,
         )

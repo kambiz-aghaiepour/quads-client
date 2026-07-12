@@ -1,9 +1,21 @@
 """Onboarding wizard shown on first launch or when no servers are configured"""
 
 from PySide6.QtWidgets import (
-    QDialog, QVBoxLayout, QHBoxLayout, QGridLayout, QLabel, QPushButton,
-    QLineEdit, QCheckBox, QTabWidget, QFrame, QWidget, QStackedWidget,
-    QScrollArea, QMessageBox, QGroupBox,
+    QDialog,
+    QVBoxLayout,
+    QHBoxLayout,
+    QGridLayout,
+    QLabel,
+    QPushButton,
+    QLineEdit,
+    QCheckBox,
+    QTabWidget,
+    QFrame,
+    QWidget,
+    QStackedWidget,
+    QScrollArea,
+    QMessageBox,
+    QGroupBox,
 )
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QFont
@@ -288,8 +300,7 @@ class OnboardingWizard(QDialog):
         pl.addWidget(title_lbl)
 
         self.ob_done_desc = QLabel(
-            "QUADS Client is configured and ready to use.\n\n"
-            "Use the sidebar on the left to navigate between views."
+            "QUADS Client is configured and ready to use.\n\n" "Use the sidebar on the left to navigate between views."
         )
         self.ob_done_desc.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.ob_done_desc.setWordWrap(True)
@@ -350,6 +361,7 @@ class OnboardingWizard(QDialog):
         self.ob_server_status_lbl.setStyleSheet("")
         try:
             import requests
+
             verify = self.ob_verify_ssl.isChecked()
             response = requests.get(f"{url}/api/v3/version", verify=verify, timeout=5)
             if response.ok:
@@ -379,7 +391,8 @@ class OnboardingWizard(QDialog):
 
         if not url or url == "https://":
             result = QMessageBox.question(
-                self, "No Server URL",
+                self,
+                "No Server URL",
                 "You haven't entered a server URL. Skip server setup and continue?",
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                 QMessageBox.StandardButton.No,
@@ -390,8 +403,10 @@ class OnboardingWizard(QDialog):
 
         try:
             success, message, version_info = self.shell.server_commands.add_server_programmatic(
-                name=name, url=url,
-                username="", password="",
+                name=name,
+                url=url,
+                username="",
+                password="",
                 verify=self.ob_verify_ssl.isChecked(),
                 test_connection=True,
             )
@@ -402,7 +417,8 @@ class OnboardingWizard(QDialog):
 
         if not success:
             result = QMessageBox.question(
-                self, "Connection Warning",
+                self,
+                "Connection Warning",
                 f"Could not verify connection to server:\n{message}\n\nAdd server anyway?",
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                 QMessageBox.StandardButton.No,
@@ -410,8 +426,10 @@ class OnboardingWizard(QDialog):
             if result == QMessageBox.StandardButton.Yes:
                 try:
                     success, message, version_info = self.shell.server_commands.add_server_programmatic(
-                        name=name, url=url,
-                        username="", password="",
+                        name=name,
+                        url=url,
+                        username="",
+                        password="",
                         verify=self.ob_verify_ssl.isChecked(),
                         test_connection=False,
                     )

@@ -1,7 +1,12 @@
 """Available hosts view - shows available hosts for scheduling"""
 
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QApplication,
+    QWidget,
+    QVBoxLayout,
+    QHBoxLayout,
+    QLabel,
+    QPushButton,
+    QApplication,
 )
 from PySide6.QtCore import Qt
 
@@ -138,12 +143,16 @@ class AvailableView(BaseAdminView):
                 self.update_status("No available hosts found")
                 return
             for host in hosts:
-                self.tree.insert("", 0, values=(
-                    host["name"],
-                    host["model"],
-                    host["host_type"],
-                    "Yes" if host["can_self_schedule"] else "No",
-                ))
+                self.tree.insert(
+                    "",
+                    0,
+                    values=(
+                        host["name"],
+                        host["model"],
+                        host["host_type"],
+                        "Yes" if host["can_self_schedule"] else "No",
+                    ),
+                )
             self.update_status(f"Loaded {len(hosts)} available host(s)")
 
         self.safe_load_data_async(load_data, on_loaded)

@@ -4,8 +4,15 @@ import calendar
 from datetime import datetime, timedelta
 
 from PySide6.QtWidgets import (
-    QDialog, QVBoxLayout, QHBoxLayout, QGridLayout, QLabel,
-    QPushButton, QSpinBox, QDialogButtonBox, QWidget,
+    QDialog,
+    QVBoxLayout,
+    QHBoxLayout,
+    QGridLayout,
+    QLabel,
+    QPushButton,
+    QSpinBox,
+    QDialogButtonBox,
+    QWidget,
 )
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont
@@ -171,9 +178,7 @@ class DatePickerDialog(QDialog):
         layout.addLayout(time_row)
 
         # OK / Cancel
-        buttons = QDialogButtonBox(
-            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
-        )
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         buttons.accepted.connect(self._ok)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
@@ -230,9 +235,7 @@ class DatePickerDialog(QDialog):
         text = self.day_buttons[row][col].text()
         if text:
             day = int(text)
-            self.selected_date = self.selected_date.replace(
-                year=self.current_year, month=self.current_month, day=day
-            )
+            self.selected_date = self.selected_date.replace(year=self.current_year, month=self.current_month, day=day)
             self._update_calendar()
 
     def _prev_month(self):

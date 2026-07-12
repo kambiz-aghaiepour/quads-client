@@ -1,8 +1,16 @@
 """Reusable host metadata filter widget for Available and Schedule views"""
 
 from PySide6.QtWidgets import (
-    QWidget, QHBoxLayout, QVBoxLayout, QGridLayout, QLabel,
-    QPushButton, QComboBox, QLineEdit, QCheckBox, QGroupBox,
+    QWidget,
+    QHBoxLayout,
+    QVBoxLayout,
+    QGridLayout,
+    QLabel,
+    QPushButton,
+    QComboBox,
+    QLineEdit,
+    QCheckBox,
+    QGroupBox,
 )
 from PySide6.QtCore import Qt
 
@@ -126,9 +134,7 @@ class HostFilterFrame(QWidget):
     def _toggle_advanced(self):
         self._advanced_visible = not self._advanced_visible
         self._advanced_group.setVisible(self._advanced_visible)
-        self._adv_toggle_btn.setText(
-            "▼ Advanced Filters" if self._advanced_visible else "▶ Advanced Filters"
-        )
+        self._adv_toggle_btn.setText("▼ Advanced Filters" if self._advanced_visible else "▶ Advanced Filters")
 
     def _pick_start_date(self):
         range_end = self.end_entry.get() if hasattr(self, "end_entry") else None

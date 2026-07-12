@@ -1,9 +1,19 @@
 """Clouds view - admin cloud management"""
 
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QLabel, QPushButton,
-    QLineEdit, QCheckBox, QDialog, QListWidget, QAbstractItemView,
-    QMessageBox, QApplication,
+    QWidget,
+    QVBoxLayout,
+    QHBoxLayout,
+    QGridLayout,
+    QLabel,
+    QPushButton,
+    QLineEdit,
+    QCheckBox,
+    QDialog,
+    QListWidget,
+    QAbstractItemView,
+    QMessageBox,
+    QApplication,
 )
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont, QShortcut, QKeySequence
@@ -19,10 +29,12 @@ class CloudsView(BaseAdminView):
         self._create_ui()
 
     def _create_ui(self):
-        self.create_header([
-            ("➕ Create Cloud", self._create_cloud),
-            ("🔄 Refresh", self._load_clouds),
-        ])
+        self.create_header(
+            [
+                ("➕ Create Cloud", self._create_cloud),
+                ("🔄 Refresh", self._load_clouds),
+            ]
+        )
 
         content = QWidget()
         cl = QVBoxLayout(content)
@@ -41,11 +53,13 @@ class CloudsView(BaseAdminView):
         cl.addWidget(self.tree)
         self._main_layout.addWidget(content, 1)
 
-        self.create_action_bar([
-            ("View Details", self._view_details),
-            ("Modify Cloud", self._modify_cloud),
-            ("Terminate", self._terminate_assignment),
-        ])
+        self.create_action_bar(
+            [
+                ("View Details", self._view_details),
+                ("Modify Cloud", self._modify_cloud),
+                ("Terminate", self._terminate_assignment),
+            ]
+        )
         self.create_status_label()
         self._load_clouds()
 
@@ -258,6 +272,7 @@ class CloudsView(BaseAdminView):
             hostnames = self._get_cloud_hosts(cloud_name)
         except Exception as e:
             from quads_client.qt6.widgets.dialogs import show_error_dialog
+
             show_error_dialog(self, "Failed to get cloud details", str(e))
             return
 

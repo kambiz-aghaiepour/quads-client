@@ -1,10 +1,25 @@
 """Schedule view for non-admin users"""
 
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QLabel, QPushButton,
-    QLineEdit, QRadioButton, QButtonGroup, QSpinBox, QFileDialog,
-    QScrollArea, QGroupBox, QFrame, QTextEdit, QListWidget,
-    QAbstractItemView, QMessageBox, QSizePolicy,
+    QWidget,
+    QVBoxLayout,
+    QHBoxLayout,
+    QGridLayout,
+    QLabel,
+    QPushButton,
+    QLineEdit,
+    QRadioButton,
+    QButtonGroup,
+    QSpinBox,
+    QFileDialog,
+    QScrollArea,
+    QGroupBox,
+    QFrame,
+    QTextEdit,
+    QListWidget,
+    QAbstractItemView,
+    QMessageBox,
+    QSizePolicy,
 )
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QFont
@@ -240,7 +255,9 @@ class ScheduleView(QWidget):
             from quads_client.qt6.widgets.base import _WorkerThread
 
             def fetch():
-                return self.shell.host_commands.get_hosts_programmatic(filter_params={"retired": False, "broken": False})
+                return self.shell.host_commands.get_hosts_programmatic(
+                    filter_params={"retired": False, "broken": False}
+                )
 
             thread = _WorkerThread(fetch)
             thread.result_ready.connect(self._populate_avail_list)
@@ -295,8 +312,7 @@ class ScheduleView(QWidget):
 
     def _pick_end_date(self):
         range_start = self.start_entry.text() or None
-        picker = DatePickerDialog(self, "Select End Date", self.end_entry.text() or None,
-                                  range_start=range_start)
+        picker = DatePickerDialog(self, "Select End Date", self.end_entry.text() or None, range_start=range_start)
         picker.exec()
         result = picker.get_result()
         if result:
@@ -372,8 +388,9 @@ class ScheduleView(QWidget):
                 result = self.shell.host_commands.get_available_hosts_programmatic(
                     start=params.get("start"),
                     end=params.get("end"),
-                    filter_params={k: v for k, v in params.items()
-                                   if k not in ("cloud", "description", "start", "end", "count")},
+                    filter_params={
+                        k: v for k, v in params.items() if k not in ("cloud", "description", "start", "end", "count")
+                    },
                 )
                 count = params.get("count", 1)
                 available = result or []
@@ -390,6 +407,7 @@ class ScheduleView(QWidget):
             self.result_text.setPlainText(preview_text)
         except Exception as exc:
             import traceback
+
             self.result_text.setPlainText(f"Preview error:\n{exc}\n\n{traceback.format_exc()}")
 
     def _submit_schedule(self):
@@ -423,6 +441,7 @@ class ScheduleView(QWidget):
                 self.result_text.setPlainText(f"✗ Schedule failed:\n\n{message or ''}")
         except Exception as exc:
             import traceback
+
             self.result_text.setPlainText(f"Error:\n{exc}\n\n{traceback.format_exc()}")
 
     def _clear_form(self):

@@ -1,8 +1,13 @@
 """Reusable dialog widgets"""
 
 from PySide6.QtWidgets import (
-    QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-    QTextEdit, QMessageBox,
+    QDialog,
+    QVBoxLayout,
+    QHBoxLayout,
+    QLabel,
+    QPushButton,
+    QTextEdit,
+    QMessageBox,
 )
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont
@@ -58,6 +63,7 @@ def show_error_dialog(parent, title, message, details=None):
 
 def _copy_to_clipboard(text):
     from PySide6.QtWidgets import QApplication
+
     QApplication.clipboard().setText(text)
 
 

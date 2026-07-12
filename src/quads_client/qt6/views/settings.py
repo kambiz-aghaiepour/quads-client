@@ -3,8 +3,14 @@
 import sys
 
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-    QScrollArea, QGroupBox, QFrame,
+    QWidget,
+    QVBoxLayout,
+    QHBoxLayout,
+    QLabel,
+    QPushButton,
+    QScrollArea,
+    QGroupBox,
+    QFrame,
 )
 from PySide6.QtCore import Qt
 
@@ -71,10 +77,7 @@ class SettingsView(QWidget):
         # Auto-refresh
         refresh_box = QGroupBox("Auto-Refresh")
         rl = QVBoxLayout(refresh_box)
-        rl.addWidget(QLabel(
-            "Default auto-refresh is disabled.\n"
-            "You can enable it per-view in 'My Hosts' view."
-        ))
+        rl.addWidget(QLabel("Default auto-refresh is disabled.\n" "You can enable it per-view in 'My Hosts' view."))
         cl.addWidget(refresh_box)
 
         # Connection
@@ -138,6 +141,7 @@ class SettingsView(QWidget):
         about_box = QGroupBox("About")
         abl = QVBoxLayout(about_box)
         from quads_client import __version__
+
         about_lbl = QLabel(
             f"QUADS Client GUI v{__version__}\n\n"
             "A graphical interface for QUADS\n"

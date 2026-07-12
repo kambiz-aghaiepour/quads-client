@@ -3,9 +3,23 @@
 from datetime import datetime
 
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QLabel, QPushButton,
-    QLineEdit, QCheckBox, QScrollArea, QGroupBox, QFrame, QDialog,
-    QTabWidget, QTextEdit, QTreeWidget, QTreeWidgetItem, QMessageBox,
+    QWidget,
+    QVBoxLayout,
+    QHBoxLayout,
+    QGridLayout,
+    QLabel,
+    QPushButton,
+    QLineEdit,
+    QCheckBox,
+    QScrollArea,
+    QGroupBox,
+    QFrame,
+    QDialog,
+    QTabWidget,
+    QTextEdit,
+    QTreeWidget,
+    QTreeWidgetItem,
+    QMessageBox,
     QAbstractItemView,
 )
 from PySide6.QtCore import Qt, QThread, Signal
@@ -178,6 +192,7 @@ class ConnectionView(QWidget):
             item = QTreeWidgetItem([name, url, "-", status])
 
             from PySide6.QtGui import QColor, QBrush
+
             if is_active_server:
                 color = QColor(self.shell.gui_app.theme_manager.get_color("success"))
                 for col in range(4):
@@ -202,6 +217,7 @@ class ConnectionView(QWidget):
             for name, config in servers.items():
                 try:
                     import requests
+
                     url = config.get("url", "")
                     verify = config.get("verify", True)
                     if not url:
@@ -210,6 +226,7 @@ class ConnectionView(QWidget):
                     response = requests.get(f"{url}/api/v3/version", verify=verify, timeout=5)
                     if response.status_code == 200:
                         import re
+
                         version_data = response.json()
                         if isinstance(version_data, dict):
                             version = version_data.get("version", "")
@@ -248,6 +265,7 @@ class ConnectionView(QWidget):
             return
 
         from PySide6.QtGui import QColor, QBrush
+
         active_id = self.shell.session_manager.active_session_id if self.shell.session_manager.active_session else None
 
         for session_id, session in self.shell.session_manager.sessions.items():
@@ -379,10 +397,7 @@ class ConnectionView(QWidget):
         verify_check.setChecked(True)
         layout.addWidget(verify_check, 4, 1)
 
-        tip = QLabel(
-            "💡 Username and password can be left blank.\n"
-            "You'll be prompted to login after connecting."
-        )
+        tip = QLabel("💡 Username and password can be left blank.\n" "You'll be prompted to login after connecting.")
         tip.setStyleSheet("color: gray; font-size: 10px;")
         layout.addWidget(tip, 5, 0, 1, 2)
 
@@ -418,8 +433,12 @@ class ConnectionView(QWidget):
                     )
                     if result == QMessageBox.StandardButton.Yes:
                         success, message, version_info = self.shell.server_commands.add_server_programmatic(
-                            name=name, url=url, username=username, password=password,
-                            verify=verify_check.isChecked(), test_connection=False,
+                            name=name,
+                            url=url,
+                            username=username,
+                            password=password,
+                            verify=verify_check.isChecked(),
+                            test_connection=False,
                         )
                         if not success:
                             QMessageBox.critical(dialog, "Error", message)
@@ -451,9 +470,15 @@ class ConnectionView(QWidget):
             name, version_info = _result[0]
             self._refresh_server_list()
             if version_info and version_info != "unknown":
-                QMessageBox.information(self, "Success", f"Server '{name}' added successfully\n\nQUADS version: {version_info}")
+                QMessageBox.information(
+                    self, "Success", f"Server '{name}' added successfully\n\nQUADS version: {version_info}"
+                )
             else:
-                QMessageBox.information(self, "Server Added", f"Server '{name}' added to configuration\n\nYou can now connect to this server.")
+                QMessageBox.information(
+                    self,
+                    "Server Added",
+                    f"Server '{name}' added to configuration\n\nYou can now connect to this server.",
+                )
 
     def _connect_server(self):
         if not self.selected_server:
@@ -599,6 +624,7 @@ class ConnectionView(QWidget):
                 self.shell.gui_app.update_role_visibility()
         except Exception as e:
             import traceback
+
             show_error_dialog(self, "Disconnect Failed", str(e), traceback.format_exc())
 
     def _edit_server(self):
@@ -766,6 +792,7 @@ class ConnectionView(QWidget):
             self._refresh_server_list()
         except Exception as e:
             import traceback
+
             show_error_dialog(self, "Close Session Failed", str(e), traceback.format_exc())
 
     def refresh(self):

@@ -41,6 +41,7 @@ class HostsView(BaseAdminView):
         # Tree
         content = QWidget()
         from PySide6.QtWidgets import QVBoxLayout
+
         cl = QVBoxLayout(content)
         cl.setContentsMargins(20, 0, 20, 20)
 
@@ -57,12 +58,14 @@ class HostsView(BaseAdminView):
         cl.addWidget(self.tree)
         self._main_layout.addWidget(content, 1)
 
-        self.create_action_bar([
-            ("Mark Broken", self._mark_broken),
-            ("Mark Repaired", self._mark_repaired),
-            ("Retire", self._retire),
-            ("Un-retire", self._unretire),
-        ])
+        self.create_action_bar(
+            [
+                ("Mark Broken", self._mark_broken),
+                ("Mark Repaired", self._mark_repaired),
+                ("Retire", self._retire),
+                ("Un-retire", self._unretire),
+            ]
+        )
         self.create_status_label()
         self._load_hosts()
 
@@ -114,7 +117,8 @@ class HostsView(BaseAdminView):
             self.update_status(f"Showing {len(hosts)} host(s){filter_text} | Last updated: Just now")
 
         self.safe_load_data_async(
-            load_data, on_loaded,
+            load_data,
+            on_loaded,
             success_message="Showing {count} host(s)",
             disable_widgets=self._filter_buttons,
         )
@@ -124,7 +128,9 @@ class HostsView(BaseAdminView):
         if not values:
             return
         hostname = values[0]
-        if not self.confirm_action("Confirm", f"Mark host '{hostname}' as broken?\n\nThis will prevent it from being scheduled."):
+        if not self.confirm_action(
+            "Confirm", f"Mark host '{hostname}' as broken?\n\nThis will prevent it from being scheduled."
+        ):
             return
         self.safe_execute(
             lambda: self.shell.host_commands.cmd_mark_broken(hostname),
@@ -150,7 +156,9 @@ class HostsView(BaseAdminView):
         if not values:
             return
         hostname = values[0]
-        if not self.confirm_action("Confirm", f"Retire host '{hostname}'?\n\nThis will remove it from the active pool."):
+        if not self.confirm_action(
+            "Confirm", f"Retire host '{hostname}'?\n\nThis will remove it from the active pool."
+        ):
             return
         self.safe_execute(
             lambda: self.shell.host_commands.cmd_retire(hostname),

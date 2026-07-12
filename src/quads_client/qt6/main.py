@@ -4,9 +4,18 @@ import sys
 import webbrowser
 
 from PySide6.QtWidgets import (
-    QMainWindow, QWidget, QHBoxLayout, QVBoxLayout, QLabel,
-    QPushButton, QFrame, QStackedWidget, QStatusBar, QMessageBox,
-    QDialog, QGridLayout,
+    QMainWindow,
+    QWidget,
+    QHBoxLayout,
+    QVBoxLayout,
+    QLabel,
+    QPushButton,
+    QFrame,
+    QStackedWidget,
+    QStatusBar,
+    QMessageBox,
+    QDialog,
+    QGridLayout,
 )
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QAction, QKeySequence, QIcon
@@ -125,7 +134,7 @@ class QuadsClientApp(QMainWindow):
             ("📊 Available", self._show_available_view, False, "available"),
             ("💻 My Hosts", self._show_my_hosts_view, False, "my_hosts"),
             ("📋 Assignments", self._show_assignments_view, False, "assignments"),
-            (None, None, True, None),   # admin separator
+            (None, None, True, None),  # admin separator
             ("👑 Admin Schedule", self._show_admin_schedule_view, True, "admin_schedule"),
             ("☁️  Clouds", self._show_clouds_view, True, "clouds"),
             ("🖥️  Hosts", self._show_hosts_view, True, "hosts"),
@@ -248,7 +257,9 @@ class QuadsClientApp(QMainWindow):
             center_layout.addWidget(info)
 
         else:
-            info = QLabel("Select an item from the sidebar to get started.\n\nNew to QUADS? Check Help → Documentation")
+            info = QLabel(
+                "Select an item from the sidebar to get started.\n\nNew to QUADS? Check Help → Documentation"
+            )
             info.setAlignment(Qt.AlignmentFlag.AlignCenter)
             center_layout.addWidget(info)
 
@@ -289,19 +300,30 @@ class QuadsClientApp(QMainWindow):
 
     def _update_nav_highlighting(self, active_view_name):
         for view_name, btn in self.nav_button_map.items():
-            is_active = (view_name == active_view_name)
+            is_active = view_name == active_view_name
             btn.setProperty("active", "true" if is_active else "false")
             btn.style().unpolish(btn)
             btn.style().polish(btn)
 
     # ------------------------------------------------------------------ nav
 
-    def _show_servers_view(self):     self._show_view("servers")
-    def _show_schedule_view(self):    self._show_view("schedule")
-    def _show_my_hosts_view(self):    self._show_view("my_hosts")
-    def _show_assignments_view(self): self._show_view("assignments")
-    def _show_available_view(self):   self._show_view("available")
-    def _show_settings_view(self):    self._show_view("settings")
+    def _show_servers_view(self):
+        self._show_view("servers")
+
+    def _show_schedule_view(self):
+        self._show_view("schedule")
+
+    def _show_my_hosts_view(self):
+        self._show_view("my_hosts")
+
+    def _show_assignments_view(self):
+        self._show_view("assignments")
+
+    def _show_available_view(self):
+        self._show_view("available")
+
+    def _show_settings_view(self):
+        self._show_view("settings")
 
     def _show_admin_schedule_view(self):
         if not self.shell.is_admin():
@@ -361,6 +383,7 @@ class QuadsClientApp(QMainWindow):
 
     def _auto_login_from_welcome(self):
         from quads_client.qt6.widgets.dialogs import show_error_dialog
+
         target = self.shell.get_auto_login_server()
         if target:
             success, error = self.shell.connect_to_server(target)
@@ -611,6 +634,7 @@ class QuadsClientApp(QMainWindow):
 
     def _set_window_icon(self):
         from pathlib import Path
+
         candidate_paths = [
             Path(__file__).parent / "assets" / "quads-client.png",
             Path(__file__).parent.parent.parent.parent / "desktop" / "icons" / "quads-client.png",
@@ -648,7 +672,8 @@ class QuadsClientApp(QMainWindow):
                 session_count = len(self.shell.session_manager.sessions)
             if session_count > 0:
                 result = QMessageBox.question(
-                    self, "Confirm Exit",
+                    self,
+                    "Confirm Exit",
                     f"You have {session_count} active session(s). Exit?",
                     QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                     QMessageBox.StandardButton.No,

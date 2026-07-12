@@ -1,9 +1,19 @@
 """My Hosts view - shows user's active assignments and hosts"""
 
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-    QCheckBox, QScrollArea, QGroupBox, QTreeWidget, QTreeWidgetItem,
-    QMessageBox, QFrame, QSizePolicy,
+    QWidget,
+    QVBoxLayout,
+    QHBoxLayout,
+    QLabel,
+    QPushButton,
+    QCheckBox,
+    QScrollArea,
+    QGroupBox,
+    QTreeWidget,
+    QTreeWidgetItem,
+    QMessageBox,
+    QFrame,
+    QSizePolicy,
 )
 from PySide6.QtCore import Qt, QTimer, QThread, Signal
 from PySide6.QtGui import QColor, QBrush
@@ -28,6 +38,7 @@ class _AssignmentFetcher(QThread):
 
     def _fetch(self):
         from quads_client.utils import get_username_short
+
         assignments_data = []
         try:
             username = get_username_short(self._shell.connection.username)
@@ -53,15 +64,17 @@ class _AssignmentFetcher(QThread):
                                 hostname = hostname.get("name", "")
                             status = "active" if is_validated else "provisioning"
                             hosts.append({"name": str(hostname), "status": status, "progress": "N/A"})
-                    assignments_data.append({
-                        "id": assignment_id,
-                        "cloud": cloud_name,
-                        "description": description,
-                        "created": "N/A",
-                        "expires": "N/A",
-                        "hosts": hosts,
-                        "days_remaining": "N/A",
-                    })
+                    assignments_data.append(
+                        {
+                            "id": assignment_id,
+                            "cloud": cloud_name,
+                            "description": description,
+                            "created": "N/A",
+                            "expires": "N/A",
+                            "hosts": hosts,
+                            "days_remaining": "N/A",
+                        }
+                    )
         except Exception as e:
             self._shell.perror(f"Failed to fetch assignments: {e}")
         return assignments_data
@@ -239,11 +252,13 @@ class MyHostsView(QWidget):
             status_icon = self._get_status_icon(host["status"])
             progress_bar = self._get_progress_bar(host["progress"])
 
-            item = QTreeWidgetItem([
-                host["name"],
-                f"{status_icon} {host['status'].capitalize()}",
-                progress_bar,
-            ])
+            item = QTreeWidgetItem(
+                [
+                    host["name"],
+                    f"{status_icon} {host['status'].capitalize()}",
+                    progress_bar,
+                ]
+            )
 
             if host["status"] == "active":
                 brush = QBrush(success_color)
@@ -308,6 +323,7 @@ class MyHostsView(QWidget):
                 self.shell.gui_mode = old_gui_mode
         except Exception as e:
             import traceback
+
             show_error_dialog(self, "Termination Failed", str(e), traceback.format_exc())
 
     def _manual_refresh(self):
