@@ -336,9 +336,6 @@ class ScheduleView(QWidget):
         self._meta_thread.result_ready.connect(apply)
         self._meta_thread.start()
 
-        if hasattr(self, "host_filters"):
-            self.host_filters.populate_metadata_async()
-
     # ------------------------------------------------------------------ mode
 
     def _on_mode_changed(self, button_id, checked):
