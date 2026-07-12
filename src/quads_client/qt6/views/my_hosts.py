@@ -333,10 +333,17 @@ class MyHostsView(QWidget):
         return {"active": "✓", "provisioning": "⏳", "queued": "○", "failed": "✗"}.get(status, "○")
 
     def _get_progress_bar(self, progress):
-        if progress == "N/A":
+        if not progress or progress == "N/A":
             return "░" * 10 + " N/A"
-        filled = int(progress / 10)
-        return "█" * filled + "░" * (10 - filled) + f" {progress}%"
+        if "/" in str(progress):
+            try:
+                stage, total = str(progress).split("/", 1)
+                pct = int(stage) / int(total) if int(total) else 0
+                filled = round(pct * 10)
+                return "█" * filled + "░" * (10 - filled) + f" {progress}"
+            except (ValueError, ZeroDivisionError):
+                pass
+        return str(progress)
 
     def _terminate_assignment(self, assignment_id):
         prefs = self._get_preferences()
