@@ -38,7 +38,7 @@ class AvailableView(BaseAdminView):
             hint.setStyleSheet("color: gray;")
             cl.addWidget(hint)
             go_btn = QPushButton("Go to Servers")
-            go_btn.clicked.connect(lambda: self.shell.gui_app._show_view("connection"))
+            go_btn.clicked.connect(lambda: self.shell.gui_app._show_servers_view())
             cl.addWidget(go_btn)
             self._main_layout.addWidget(center, 1)
             self.create_status_label()

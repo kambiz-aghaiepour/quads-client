@@ -66,7 +66,7 @@ class AdminScheduleView(BaseAdminView):
         cl.addWidget(filter_bar)
 
         # Action buttons
-        action_bar = self.create_action_bar(
+        action_bar = self.create_action_bar([
             ("+ Create Schedule", self._create_schedule),
             ("✏ Edit", self._edit_schedule),
             ("🗑 Delete", self._delete_schedule),
@@ -80,7 +80,7 @@ class AdminScheduleView(BaseAdminView):
                     disable_widgets=[self.tree.tree],
                 ),
             ),
-        )
+        ])
         cl.addWidget(action_bar)
 
         # Schedules tree

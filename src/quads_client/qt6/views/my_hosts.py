@@ -14,6 +14,9 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QFrame,
 )
+from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
+
 from PySide6.QtCore import Qt, QTimer, QThread, Signal
 from PySide6.QtGui import QColor, QBrush
 
@@ -37,6 +40,7 @@ class _AssignmentFetcher(QThread):
 
     def _fetch(self):
         from quads_client.utils import get_username_short
+        from quads_client.progress import format_progress_str
 
         assignments_data = []
         try:
@@ -44,6 +48,15 @@ class _AssignmentFetcher(QThread):
             user_assignments = self._shell.connection.api.filter_assignments({"owner": username, "active": True})
             if not user_assignments:
                 return []
+
+            move_status_map = {}
+            try:
+                all_moves = self._shell.connection.api.get_all_move_status()
+                if all_moves:
+                    move_status_map = {m["host"]: m for m in all_moves if isinstance(m, dict)}
+            except Exception:
+                pass
+
             for assignment in user_assignments:
                 if isinstance(assignment, dict):
                     assignment_id = assignment.get("_id") or assignment.get("id")
@@ -56,27 +69,60 @@ class _AssignmentFetcher(QThread):
                         schedules = []
                     is_validated = assignment.get("validated", False)
                     hosts = []
+                    created = "N/A"
+                    expires = "N/A"
+                    days_remaining = "N/A"
                     for schedule in schedules if schedules else []:
                         if isinstance(schedule, dict):
                             hostname = schedule.get("host", {})
                             if isinstance(hostname, dict):
                                 hostname = hostname.get("name", "")
-                            status = "active" if is_validated else "provisioning"
-                            hosts.append({"name": str(hostname), "status": status, "progress": "N/A"})
+                            if is_validated:
+                                status = "active"
+                                progress = format_progress_str("completed")
+                            else:
+                                move_data = move_status_map.get(str(hostname))
+                                if move_data:
+                                    move_status = move_data.get("status", "pending")
+                                    progress = format_progress_str(move_status)
+                                    status = move_status
+                                else:
+                                    status = "scheduled"
+                                    progress = "Awaiting move"
+                            hosts.append({"name": str(hostname), "status": status, "progress": progress})
+                    if schedules:
+                        first = schedules[0] if isinstance(schedules[0], dict) else {}
+                        created = first.get("start", "N/A").replace("GMT", "UTC")
+                        expires = first.get("end", "N/A").replace("GMT", "UTC")
+                        days_remaining = self._calc_days_remaining(expires)
                     assignments_data.append(
                         {
                             "id": assignment_id,
                             "cloud": cloud_name,
                             "description": description,
-                            "created": "N/A",
-                            "expires": "N/A",
+                            "created": created,
+                            "expires": expires,
                             "hosts": hosts,
-                            "days_remaining": "N/A",
+                            "days_remaining": days_remaining,
                         }
                     )
         except Exception as e:
             self._shell.perror(f"Failed to fetch assignments: {e}")
         return assignments_data
+
+    @staticmethod
+    def _calc_days_remaining(date_str):
+        try:
+            try:
+                dt = parsedate_to_datetime(date_str)
+            except Exception:
+                dt = datetime.fromisoformat(date_str)
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            delta = dt - datetime.now(timezone.utc)
+            return str(max(0, delta.days))
+        except Exception:
+            return "N/A"
 
 
 class MyHostsView(QWidget):
@@ -109,7 +155,7 @@ class MyHostsView(QWidget):
             else:
                 show_error_dialog(self, "Login Failed", f"Failed to connect to {target_server}", error or "")
         else:
-            self.shell.gui_app._show_view("connection")
+            self.shell.gui_app._show_servers_view()
 
     def _create_ui(self):
         root = QVBoxLayout(self)

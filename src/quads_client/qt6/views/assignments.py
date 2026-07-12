@@ -60,6 +60,10 @@ class AssignmentsView(BaseAdminView):
     def _load_assignments(self):
         from quads_client.utils import get_username_short, extract_assignment_id, extract_cloud_name
 
+        if not self.shell.is_authenticated():
+            self.update_status("Not authenticated — please connect to a server")
+            return
+
         is_admin = self.shell.is_admin()
 
         def load_data():

@@ -181,7 +181,7 @@ class SettingsView(QWidget):
             self.theme_label.setText(f"{new_mode.capitalize()} Mode")
 
     def _manage_servers(self):
-        self.shell.gui_app._show_view("connection")
+        self.shell.gui_app._show_servers_view()
 
     def refresh(self):
         pass

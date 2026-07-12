@@ -32,6 +32,7 @@ from quads_client.qt6.views.clouds import CloudsView
 from quads_client.qt6.views.hosts import HostsView
 from quads_client.qt6.views.admin_schedule import AdminScheduleView
 from quads_client.qt6.views.available import AvailableView
+from quads_client.qt6.views.moves import MoveProgressView
 from quads_client.qt6.views.settings import SettingsView
 from quads_client.qt6.views.preferences import PreferencesDialog
 
@@ -134,6 +135,7 @@ class QuadsClientApp(QMainWindow):
             ("📊 Available", self._show_available_view, False, "available"),
             ("💻 My Hosts", self._show_my_hosts_view, False, "my_hosts"),
             ("📋 Assignments", self._show_assignments_view, False, "assignments"),
+            ("~ Move Progress", self._show_moves_view, False, "moves"),
             (None, None, True, None),  # admin separator
             ("👑 Admin Schedule", self._show_admin_schedule_view, True, "admin_schedule"),
             ("☁️  Clouds", self._show_clouds_view, True, "clouds"),
@@ -183,6 +185,7 @@ class QuadsClientApp(QMainWindow):
             "available": lambda: AvailableView(self.content_stack, self.shell),
             "my_hosts": lambda: MyHostsView(self.content_stack, self.shell),
             "assignments": lambda: AssignmentsView(self.content_stack, self.shell),
+            "moves": lambda: MoveProgressView(self.content_stack, self.shell),
             "admin_schedule": lambda: AdminScheduleView(self.content_stack, self.shell),
             "clouds": lambda: CloudsView(self.content_stack, self.shell),
             "hosts": lambda: HostsView(self.content_stack, self.shell),
@@ -318,6 +321,9 @@ class QuadsClientApp(QMainWindow):
 
     def _show_assignments_view(self):
         self._show_view("assignments")
+
+    def _show_moves_view(self):
+        self._show_view("moves")
 
     def _show_available_view(self):
         self._show_view("available")
