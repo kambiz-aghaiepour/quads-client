@@ -291,6 +291,7 @@ class CloudsView(BaseAdminView):
         dlayout.addWidget(count_label)
 
         list_widget = QListWidget()
+        list_widget.setAlternatingRowColors(True)
         list_widget.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         mono = QFont("Monospace")
         mono.setStyleHint(QFont.StyleHint.TypeWriter)

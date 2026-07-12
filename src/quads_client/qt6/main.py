@@ -102,6 +102,7 @@ class QuadsClientApp(QMainWindow):
 
     def _create_main_layout(self):
         central = QWidget()
+        central.setObjectName("main_content")
         self.setCentralWidget(central)
         root = QHBoxLayout(central)
         root.setContentsMargins(0, 0, 0, 0)

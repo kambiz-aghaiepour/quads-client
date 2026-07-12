@@ -44,12 +44,26 @@ class ScheduleView(QWidget):
         self._available_hosts_loaded = False
         self._advanced_visible = False
         self._avail_visible = False
+        self._preview_text = None  # sentinel: None = not yet built / in login-prompt mode
         self._create_ui()
 
     def _create_ui(self):
-        root = QVBoxLayout(self)
+        # If this widget already has a layout (called again via refresh()), clear it
+        # and reuse it to avoid Qt's "already has a layout" warning.
+        existing = self.layout()
+        if existing is not None:
+            while existing.count():
+                item = existing.takeAt(0)
+                w = item.widget()
+                if w:
+                    w.setParent(None)
+                    w.deleteLater()
+            root = existing
+        else:
+            root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(0)
+        self._preview_text = None  # reset sentinel before rebuild
 
         # Title bar
         title_bar = QWidget()
@@ -173,6 +187,7 @@ class ScheduleView(QWidget):
         avail_vl.addWidget(avail_ctrl)
 
         self._avail_list = QListWidget()
+        self._avail_list.setAlternatingRowColors(True)
         self._avail_list.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         self._avail_list.setFixedHeight(120)
         avail_vl.addWidget(self._avail_list)
@@ -440,7 +455,7 @@ class ScheduleView(QWidget):
     # ------------------------------------------------------------------ preview
 
     def _update_preview(self):
-        if not hasattr(self, "_preview_text"):
+        if self._preview_text is None:
             return
         mode = self._mode_group.checkedId()
         lines = []
@@ -671,24 +686,17 @@ class ScheduleView(QWidget):
     # ------------------------------------------------------------------ refresh
 
     def refresh(self):
-        if not self.shell.is_authenticated():
-            # Rebuild to show login prompt
-            for child in self.children():
-                if isinstance(child, QWidget):
-                    child.deleteLater()
-            QVBoxLayout(self)
-            self._create_ui()
-        elif hasattr(self, "_preview_text"):
+        authenticated = self.shell.is_authenticated()
+        fully_built = self._preview_text is not None
+        if authenticated and fully_built:
             self._update_preview()
         else:
-            for child in self.children():
-                if isinstance(child, QWidget):
-                    child.deleteLater()
+            # Auth state changed, or first build was in login-prompt mode — rebuild
             self._create_ui()
 
     def prefill_hosts(self, hostnames):
         """Called by available.py to switch to hosts mode and prefill names."""
-        if not hostnames or not hasattr(self, "hosts_entry"):
+        if not hostnames or self._preview_text is None:
             return
         self._mode_group.button(1).setChecked(True)
         self.hosts_entry.setText(",".join(hostnames))
