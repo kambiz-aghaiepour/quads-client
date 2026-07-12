@@ -38,6 +38,7 @@ class MoveProgressView(BaseAdminView):
 
         content = QWidget()
         from PySide6.QtWidgets import QVBoxLayout
+
         cl = QVBoxLayout(content)
         cl.setContentsMargins(20, 0, 20, 20)
 
@@ -87,28 +88,36 @@ class MoveProgressView(BaseAdminView):
 
             if source == "pending":
                 for move in moves:
-                    item = self.tree.insert("", 0, values=(
-                        move.get("host", "?"),
-                        move.get("current", ""),
-                        move.get("new", ""),
+                    item = self.tree.insert(
                         "",
-                        "Scheduled",
-                        "Awaiting next move cycle",
-                    ))
+                        0,
+                        values=(
+                            move.get("host", "?"),
+                            move.get("current", ""),
+                            move.get("new", ""),
+                            "",
+                            "Scheduled",
+                            "Awaiting next move cycle",
+                        ),
+                    )
                     self._color_item(item, "scheduled")
                 self.update_status(f"{len(moves)} scheduled move(s) (awaiting next move cycle)")
                 return
 
             for move in moves:
                 status = move.get("status", "pending")
-                item = self.tree.insert("", 0, values=(
-                    move.get("host", "?"),
-                    move.get("source_cloud", ""),
-                    move.get("target_cloud", ""),
-                    format_progress_str(status),
-                    status,
-                    move.get("message", "") or "",
-                ))
+                item = self.tree.insert(
+                    "",
+                    0,
+                    values=(
+                        move.get("host", "?"),
+                        move.get("source_cloud", ""),
+                        move.get("target_cloud", ""),
+                        format_progress_str(status),
+                        status,
+                        move.get("message", "") or "",
+                    ),
+                )
                 self._color_item(item, status)
 
             self.update_status(f"{len(moves)} active move(s)")
@@ -128,6 +137,7 @@ class MoveProgressView(BaseAdminView):
     @staticmethod
     def _color_item(item, status):
         from PySide6.QtGui import QColor, QBrush
+
         color_map = {
             "failed": "#f48771",
             "completed": "#4ec9b0",

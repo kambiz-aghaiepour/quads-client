@@ -433,9 +433,7 @@ class ScheduleView(QWidget):
     # ------------------------------------------------------------------ file
 
     def _browse_file(self):
-        path, _ = QFileDialog.getOpenFileName(
-            self, "Select Host List File", "", "Text files (*.txt);;All files (*)"
-        )
+        path, _ = QFileDialog.getOpenFileName(self, "Select Host List File", "", "Text files (*.txt);;All files (*)")
         if path:
             self.file_entry.setText(path)
 

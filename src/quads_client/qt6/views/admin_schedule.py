@@ -64,20 +64,22 @@ class AdminScheduleView(BaseAdminView):
         cl.addWidget(filter_bar)
 
         # Action buttons
-        action_bar = self.create_action_bar([
-            ("+ Create Schedule", self._create_schedule),
-            ("↔ Extend", self._extend_schedule),
-            ("⊢ Shrink", self._shrink_schedule),
-            ("⊠ Terminate", self._terminate_schedule),
-            (
-                "⟳ Refresh",
-                lambda: self.safe_load_data_async(
-                    self._fetch_schedules,
-                    self._populate_tree,
-                    disable_widgets=[self.tree.tree],
+        action_bar = self.create_action_bar(
+            [
+                ("+ Create Schedule", self._create_schedule),
+                ("↔ Extend", self._extend_schedule),
+                ("⊢ Shrink", self._shrink_schedule),
+                ("⊠ Terminate", self._terminate_schedule),
+                (
+                    "⟳ Refresh",
+                    lambda: self.safe_load_data_async(
+                        self._fetch_schedules,
+                        self._populate_tree,
+                        disable_widgets=[self.tree.tree],
+                    ),
                 ),
-            ),
-        ])
+            ]
+        )
         cl.addWidget(action_bar)
 
         # Assignments tree
@@ -383,9 +385,7 @@ class AdminScheduleView(BaseAdminView):
             args = _result[0]
             try:
                 self.shell.schedule_commands.cmd_schedule_admin(args)
-                self.safe_load_data_async(
-                    self._fetch_schedules, self._populate_tree, disable_widgets=[self.tree.tree]
-                )
+                self.safe_load_data_async(self._fetch_schedules, self._populate_tree, disable_widgets=[self.tree.tree])
                 QMessageBox.information(self, "Success", "Schedule creation submitted")
             except Exception as exc:
                 show_error_dialog(self, "Error", str(exc), traceback.format_exc())
