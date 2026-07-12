@@ -125,7 +125,6 @@ class QuadsClientApp(QMainWindow):
 
         sep = QFrame()
         sep.setFrameShape(QFrame.Shape.HLine)
-        sep.setContentsMargins(8, 0, 8, 0)
         sb_layout.addWidget(sep)
         sb_layout.addSpacing(4)
 
@@ -151,7 +150,7 @@ class QuadsClientApp(QMainWindow):
             if label is None:
                 sep2 = QFrame()
                 sep2.setFrameShape(QFrame.Shape.HLine)
-                sep2.setContentsMargins(8, 4, 8, 4)
+                sep2.setContentsMargins(0, 4, 0, 4)
                 sb_layout.addWidget(sep2)
                 self._sidebar_items.append(("separator", sep2, is_admin))
                 continue
